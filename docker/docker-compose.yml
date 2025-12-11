@@ -1,0 +1,22 @@
+
+services:
+  srs:
+    image: ossrs/srs:5
+    container_name: srs
+    ports:
+      - "1935:1935"   # RTMP
+      - "1985:1985"   # API
+      - "8080:8080"   # HLS/HTTP
+      - "8000:8000/udp" # WebRTC
+    volumes:
+      - ./srs/srs.conf:/usr/local/srs/conf/srs.conf
+
+  liquidsoap:
+    image: savonet/liquidsoap:73a1bac
+    container_name: liquidsoap
+    depends_on:
+      - srs
+    volumes:
+      - ./liquidsoap/radio.liq:/radio.liq
+      - ./liquidsoap/music:/radio/music
+    command: ["liquidsoap", "/radio.liq"]
