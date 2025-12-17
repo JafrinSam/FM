@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Magilio";
+  src: url("/src/assets/fonts/magilio/Magilio.otf") format("opentype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+/* In Tailwind v4, we map utility classes to your CSS variables right here.
+  This automatically generates classes like 'bg-surface', 'text-primary', etc.
+*/
+@theme {
+  /* Maps bg-background to var(--bg-primary) */
+  --color-background: var(--bg-primary);
+  
+  /* Maps bg-surface / text-surface to var(--bg-secondary) */
+  --color-surface: var(--bg-secondary);
+  
+  /* Maps bg-card to var(--bg-card) */
+  --color-card: var(--bg-card);
+
+  /* Maps text-primary / bg-primary to var(--text-primary) */
+  --color-primary: var(--text-primary);
+  
+  /* Maps text-secondary to var(--text-secondary) */
+  --color-secondary: var(--text-secondary);
+  
+  /* Maps border-border to var(--border-color) */
+  --color-border: var(--border-color);
+
+  /* Maps bg-accent / text-accent */
+  --color-accent: var(--accent-color);
+  --color-accent-hover: var(--accent-hover);
+}
+
