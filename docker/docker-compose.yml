@@ -1,22 +1,54 @@
-
 services:
+  # -------------------------------
+  # 1. SRS (WebRTC → RTMP)
+  # -------------------------------
   srs:
     image: ossrs/srs:5
     container_name: srs
     ports:
-      - "1935:1935"   # RTMP
-      - "1985:1985"   # API
-      - "8080:8080"   # HLS/HTTP
-      - "8000:8000/udp" # WebRTC
+      - "1935:1935"
+      - "1985:1985"
+      - "8080:8080"
+      - "8000:8000/udp"
     volumes:
       - ./srs/srs.conf:/usr/local/srs/conf/srs.conf
 
+  # -------------------------------
+  # 2. Liquidsoap (Mixer + Control)
+  # -------------------------------
   liquidsoap:
-    image: savonet/liquidsoap:73a1bac
+    image: savonet/liquidsoap:rolling-release-v2.4.x
     container_name: liquidsoap
     depends_on:
       - srs
+      - icecast
+    ports:
+      - "1234:1234" # Telnet Port
+    environment:
+      ICECAST_SOURCE_PASSWORD: hackme
     volumes:
-      - ./liquidsoap/radio.liq:/radio.liq
-      - ./liquidsoap/music:/radio/music
-    command: ["liquidsoap", "/radio.liq"]
+      # 1. Mount the configuration script
+      - ./liquidsoap/config/radio.liq:/radio/radio.liq:ro
+      
+      # 2. 💡 CRITICAL: Mount the SAME music folder your backend uploads to.
+      # Ensure this path matches where your Node.js 'backend' folder is relative to this file.
+      - ../backend/radio/music:/radio/music
+      
+      # 3. (Optional) Mount playlists folder if you use it
+      - ./liquidsoap/playlists:/radio/playlists
+    
+
+    command: ["liquidsoap", "/radio/radio.liq"]
+
+  # -------------------------------
+  # 3. Icecast (Distribution)
+  # -------------------------------
+  icecast:
+    image: infiniteproject/icecast
+    container_name: icecast
+    ports:
+      - "8000:8000"
+    environment:
+      ICECAST_SOURCE_PASSWORD: hackme
+      ICECAST_ADMIN_PASSWORD: hackme
+      ICECAST_PASSWORD: hackme
