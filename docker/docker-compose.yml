@@ -46,9 +46,10 @@ services:
   icecast:
     image: infiniteproject/icecast
     container_name: icecast
+    user: icecast 
     ports:
       - "8000:8000"
-    environment:
-      ICECAST_SOURCE_PASSWORD: hackme
-      ICECAST_ADMIN_PASSWORD: hackme
-      ICECAST_PASSWORD: hackme
+
+    volumes:
+      # Mount our custom config with CORS headers
+      - ./icecast/icecast.xml:/etc/icecast.xml
