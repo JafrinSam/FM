@@ -1,17 +1,18 @@
-// src/styles/themeConstants.js
-
 export const themes = {
   light: {
-    // BlazeUp Light Theme (Warm × Clean)
-    "--bg-primary": "#F9FAFB",       // Soft Off-White (not harsh)
-    "--bg-secondary": "#FFFFFF",     // Pure White surface
-    "--bg-card": "#FFFFFF",          // Card background
-    "--text-primary": "#111827",     // Near Black
-    "--text-secondary": "#6B7280",   // Cool Grey
-    "--border-color": "#E5E7EB",     // Light Border
-    "--accent-color": "#FF6A00",     // Blaze Orange 🔥
-    "--accent-hover": "#E65C00",     // Darker Blaze
-    "--danger-color": "#DC2626",     // Red for LIVE
+    // BlazeUp Light Theme
+    "--bg-primary": "#F9FAFB",
+    "--bg-secondary": "#FFFFFF",
+    "--bg-card": "#FFFFFF",
+    "--text-primary": "#111827",
+    "--text-secondary": "#6B7280",
+    "--border-color": "#E5E7EB",
+    "--accent-color": "#FF6A00",
+    "--accent-hover": "#E65C00",
+    "--danger-color": "#DC2626",
+    
+    "--visualizer-top": "#FACC15",    // Bright Yellow (Flame tip)
+    "--visualizer-bottom": "#EA580C", // Vibrant Orange (Flame base)
   },
 
   dark: {
@@ -25,6 +26,10 @@ export const themes = {
     "--accent-color": "#FF6A00",
     "--accent-hover": "#E65C00",
     "--danger-color": "#E63946",
+
+    // 🎨 Visualizer Colors (The Fire Gradient you liked)
+    "--visualizer-top": "#f97316",  
+    "--visualizer-bottom": "#7f1d1d", 
   },
 
   minimalPro: {
@@ -36,5 +41,9 @@ export const themes = {
     "--border-color": "#2A2A2A",
     "--accent-color": "#F4B41A",
     "--accent-hover": "#D9A017",
+    
+    // 🎨 Visualizer Colors (Gold to Dark Amber)
+    "--visualizer-top": "#F4B41A", 
+    "--visualizer-bottom": "#78350f", 
   },
 };

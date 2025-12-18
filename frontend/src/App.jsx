@@ -20,6 +20,7 @@ import LiquidsoapPublicClient from './components/LiquidsoapPublicClient';
 import SchedulerView from './pages/SchedulerView';   
 import MusicManagerView from './pages/MusicManagerView'
 import AboutView from './pages/AboutView';
+import QueueManager from './pages/QueueManager'
 //import CommanderView from './pages/CommanderView'; 
 
 // Placeholders
@@ -65,6 +66,7 @@ function App() {
             <Route index element={<SchedulerView />} />
             <Route path="music" element={<MusicManagerView />} />
             {/* <Route path="commander" element={<CommanderView />} /> */}
+            <Route path='queue' element={<QueueManager/>} />
             <Route path="logs" element={<PlaceholderLogs />} /> 
             <Route path="settings" element={<PlaceholderSettings />} /> 
           </Route>

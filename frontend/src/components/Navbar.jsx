@@ -1,8 +1,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
-// 1. Add Sun and Moon to imports
-import { Music, Settings, Radio, Sun, Moon } from 'lucide-react';
+// 1. Updated Imports with new icons
+import { 
+  Music, 
+  Settings, 
+  Radio, 
+  Sun, 
+  Moon, 
+  CalendarClock, // For Scheduler
+  ListMusic      // For Queue Manager
+} from 'lucide-react';
 
 export default function Navbar() {
   const { themeName, toggleTheme } = useTheme();
@@ -13,7 +21,7 @@ export default function Navbar() {
         <div className="flex justify-between items-center h-16">
           
           {/* Branding / Logo */}
-          <div className="flex-shrink-0 flex items-center gap-3 group cursor-pointer">
+          <Link to="/admin" className="flex-shrink-0 flex items-center gap-3 group cursor-pointer">
             <div className="h-10 w-10 relative overflow-hidden flex items-center justify-center">
                 <video 
                     autoPlay 
@@ -31,12 +39,12 @@ export default function Navbar() {
             <h1 className="text-3xl tracking-wide text-accent font-magilio pt-1">
               BlazeUp
             </h1>
-          </div>
+          </Link>
 
           {/* Navigation Links */}
           <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-2">
             
-            {/* Commander Link */}
+            {/* 1. Commander */}
             <Link 
               to="/admin" 
               className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium bg-background text-primary border border-border hover:border-accent transition-all group"
@@ -45,27 +53,43 @@ export default function Navbar() {
               Commander
             </Link>
 
-            {/* Music Library Link (Fixed Layout) */}
+            {/* 2. Live Queue (NEW) */}
+            <Link 
+              to="/admin/queue" 
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:text-accent hover:bg-background transition-colors group"
+            >
+              <ListMusic size={16} className="group-hover:text-accent transition-colors" />
+              Queue
+            </Link>
+
+            {/* 3. Scheduler (NEW) */}
+            <Link 
+              to="/admin/scheduler" 
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:text-accent hover:bg-background transition-colors group"
+            >
+              <CalendarClock size={16} className="group-hover:text-accent transition-colors" />
+              Scheduler
+            </Link>
+
+            {/* 4. Music Library */}
             <Link 
               to="/admin/music" 
-              // Added: flex items-center gap-2
               className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:text-accent hover:bg-background transition-colors group"
             >
               <Music size={16} className="group-hover:text-accent transition-colors" />
-              Music Library
+              Library
             </Link>
             
-            {/* Settings Link (Fixed Layout & Icon) */}
+            {/* 5. Settings */}
             <Link 
               to="/admin/settings" 
-              // Added: flex items-center gap-2
               className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:text-accent hover:bg-background transition-colors group"
             >
               <Settings size={16} className="group-hover:text-accent transition-colors" />
               Settings
             </Link>
 
-            {/* Theme Toggle Button (With Lucide Icons) */}
+            {/* Theme Toggle */}
              <button
               onClick={toggleTheme}
               className="ml-4 p-2 rounded-full bg-background border border-border text-primary hover:text-accent hover:border-accent transition-all shadow-sm flex items-center justify-center"

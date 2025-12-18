@@ -8,28 +8,28 @@ import {
   Volume2, 
   AlertCircle 
 } from 'lucide-react';
+import StreamVisualizer from "../components/StreamVisualizer"; // Ensure path is correct
 
-/* ================= CONFIG ================= */
-const WS_URL = "ws://localhost:5000?role=client"; // Connect to your Node.js WebSocket
-const STREAM_URL = "http://localhost:8000/radio.mp3"; // Your Icecast stream
+const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:5000?role=client";
+const STREAM_BASE = import.meta.env.VITE_STREAM_URL || "http://localhost:8000/radio.mp3";
 
+// 2. Append the timestamp dynamically to bypass browser cache
+const STREAM_URL = `${STREAM_BASE}?t=${Date.now()}`;
 export default function LiquidsoapPublicClient() {
-  // --- STATE ---
   const [track, setTrack] = useState({
     title: "Waiting for stream...",
     artist: "Station Offline",
-    type: "Offline", // 'Music', 'Prerecorded Show', 'Offline'
+    type: "Offline",
     art: null
   });
 
   const [listenerCount, setListenerCount] = useState(0);
-  const [isConnected, setIsConnected] = useState(false); // WebSocket status
-  const [isPlaying, setIsPlaying] = useState(false); // Audio player status
+  const [isConnected, setIsConnected] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   
-  // Use a ref to prevent double-connections in React Strict Mode
+  const audioRef = useRef(null);
   const ws = useRef(null);
 
-  /* ================= WEBSOCKET CONNECTION ================= */
   useEffect(() => {
     const connect = () => {
       ws.current = new WebSocket(WS_URL);
@@ -42,21 +42,12 @@ export default function LiquidsoapPublicClient() {
       ws.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-
-          // 1. Handle Song Updates
           if (message.type === 'NOW_PLAYING') {
-            setTrack(message.data || { 
-              title: "Station Idle", 
-              artist: "", 
-              type: "Offline" 
-            });
+            setTrack(message.data || { title: "Station Idle", artist: "", type: "Offline" });
           }
-
-          // 2. Handle Listener Count Updates
           if (message.type === 'LISTENER_COUNT') {
             setListenerCount(message.data.count);
           }
-
         } catch (err) {
           console.error("Failed to parse WebSocket message", err);
         }
@@ -65,25 +56,20 @@ export default function LiquidsoapPublicClient() {
       ws.current.onclose = () => {
         console.log("❌ Disconnected from Radio WebSocket");
         setIsConnected(false);
-        // Optional: Retry connection after 5 seconds
         setTimeout(connect, 5000);
       };
     };
 
     connect();
-
-    return () => {
-      if (ws.current) ws.current.close();
-    };
+    return () => { if (ws.current) ws.current.close(); };
   }, []);
 
-  /* ================= UI ================= */
   return (
     <div className="max-w-4xl mx-auto p-6 md:p-12 font-sans">
       
-      {/* HERO SECTION */}
+      {/* HEADER */}
       <header className="text-center mb-12">
-        <div className="inline-flex items-center justify-center p-4 bg-surface rounded-full mb-6 shadow-lg animate-fade-in-down">
+        <div className="inline-flex items-center justify-center p-4 bg-surface rounded-full mb-6 shadow-lg">
             <Radio size={48} className="text-accent" strokeWidth={1.5} />
         </div>
         <h1 className="text-5xl md:text-6xl font-magilio text-primary tracking-wide mb-4">
@@ -94,7 +80,7 @@ export default function LiquidsoapPublicClient() {
         </p>
       </header>
 
-      {/* CONNECTION STATUS BANNER */}
+      {/* DISCONNECT BANNER */}
       {!isConnected && (
         <div className="bg-red-900/20 border border-red-500/50 text-red-500 p-4 rounded-xl mb-8 flex items-center justify-center gap-2">
             <AlertCircle size={20} />
@@ -105,7 +91,7 @@ export default function LiquidsoapPublicClient() {
       {/* MAIN PLAYER CARD */}
       <div className="bg-card border border-border rounded-3xl shadow-2xl overflow-hidden relative group">
         
-        {/* Visualizer Background */}
+        {/* Subtle Background Gradient */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-accent to-transparent opacity-50"></div>
 
         <div className="p-8 md:p-12 flex flex-col items-center">
@@ -123,18 +109,13 @@ export default function LiquidsoapPublicClient() {
             </div>
 
             {/* Song Info */}
-            <div className="text-center mb-10 space-y-3">
+            <div className="text-center mb-8 space-y-3">
                 <h2 className="text-2xl md:text-4xl font-bold text-primary flex items-center justify-center gap-3">
-                    {/* Switch icon based on Type 
-
-[Image of music icon]
- */}
                     {track.type === 'Prerecorded Show' ? (
                        <Mic2 size={28} className="text-accent hidden md:block" />
                     ) : (
                        <Music size={28} className="text-accent hidden md:block" />
                     )}
-                    
                     {track.title}
                 </h2>
                 
@@ -142,20 +123,29 @@ export default function LiquidsoapPublicClient() {
                     <span className="opacity-70">by</span>
                     <span className="text-accent/90">{track.artist || "Unknown Artist"}</span>
                 </p>
-
-                {/* Optional Album Badge */}
                 {track.album && track.album !== "Unknown Album" && (
-                  <p className="text-sm text-secondary/60 italic">
-                    {track.album}
-                  </p>
+                  <p className="text-sm text-secondary/60 italic">{track.album}</p>
                 )}
             </div>
 
-            {/* Audio Element */}
-            <div className="w-full max-w-md bg-surface p-4 rounded-2xl shadow-inner border border-border">
+            {/* 1. MOVED VISUALIZER HERE (Above Player) 
+            */}
+            <div className="w-full max-w-md">
+                <StreamVisualizer 
+                    audioRef={audioRef} 
+                    isPlaying={isPlaying} 
+                    barCount={32} 
+                />
+            </div>
+
+            {/* 2. AUDIO PLAYER (Bottom)
+            */}
+            <div className="w-full max-w-md bg-surface p-4 rounded-b-2xl rounded-t-md shadow-inner border border-border z-10">
                 <audio
+                    ref={audioRef}  
                     controls
                     src={STREAM_URL}
+                    crossOrigin="anonymous" // REQUIRED
                     preload="none"
                     className="w-full h-10 accent-accent"
                     onPlay={() => setIsPlaying(true)}
@@ -171,23 +161,18 @@ export default function LiquidsoapPublicClient() {
             </p>
         </div>
 
-        {/* Footer Stats Strip */}
+        {/* Footer Stats */}
         <div className="bg-surface border-t border-border p-4 md:px-12 flex justify-between items-center text-sm">
-            
-            {/* Real-time Listeners from WebSocket */}
             <div className="flex items-center gap-2 text-primary font-medium transition-all duration-300">
                 <Users size={18} className="text-accent" />
                 <span>{listenerCount} Listening Now</span>
             </div>
-            
-            {/* Stream Health */}
             <div className="flex items-center gap-2 text-secondary">
                 <Activity size={18} className={isPlaying ? "text-green-500 animate-pulse" : "text-gray-500"} />
                 <span>Status: {isConnected ? "Live Data" : "Connecting..."}</span>
             </div>
         </div>
       </div>
-
     </div>
   );
 }
