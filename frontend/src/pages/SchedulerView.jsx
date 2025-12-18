@@ -16,7 +16,7 @@ import {
 
 // --- Helper: Schedule Row ---
 const ScheduleRow = ({ schedule, onDelete, onEdit }) => {
-  const time = `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`;
+  const time = `${String(schedule.localHour).padStart(2, '0')}:${String(schedule.localMinute).padStart(2, '0')}`;
   
   return (
     <tr className="border-b border-border hover:bg-surface transition-colors duration-150 group">
@@ -222,7 +222,7 @@ export default function SchedulerView() {
               <option value="Jingle">Jingles</option>
               <option value="StationID">Station IDs</option>
               <option value="Ad">Advertisements</option>
-              <option value="Show">Shows</option>
+              <option value="Prerecorded Show">Prerecorded Show</option>
             </select>
           </div>
           

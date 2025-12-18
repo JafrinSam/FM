@@ -207,7 +207,7 @@ export default function MusicManagerView() {
                         <option value="Jingle">Jingle</option>
                         <option value="StationID">Station ID</option>
                         <option value="Ad">Advertisement</option>
-                        <option value="Show">Prerecorded Show</option>
+                        <option value="Prerecorded Show">Prerecorded Show</option>
                     </select>
                 </div>
                 <div>
@@ -263,7 +263,7 @@ export default function MusicManagerView() {
                     <option value="Jingle">Jingle</option>
                     <option value="StationID">Station ID</option>
                     <option value="Ad">Advertisement</option>
-                    <option value="Show">Prerecorded Show</option>
+                    <option value="Prerecorded Show">Prerecorded Show</option>
                 </select>
               </div>
 

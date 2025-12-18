@@ -32,7 +32,7 @@ services:
       
       # 2. 💡 CRITICAL: Mount the SAME music folder your backend uploads to.
       # Ensure this path matches where your Node.js 'backend' folder is relative to this file.
-      - ../backend/radio/music:/radio/music
+      - ../backend/radio/:/radio/
       
       # 3. (Optional) Mount playlists folder if you use it
       - ./liquidsoap/playlists:/radio/playlists

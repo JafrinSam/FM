@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react'; // 1. Import hooks
 import { 
   BrowserRouter, 
   Routes, 
@@ -9,25 +9,44 @@ import {
 import { ThemeProvider } from './context/ThemeContext';
 
 // Layouts
-import AdminLayout from './layout/AdminLayout'; // Ensure paths match your folder structure
+import AdminLayout from './layout/AdminLayout'; 
 import ClientLayout from './layout/ClientLayout';
 
-// Views - Client
+// Components
+import LoadingScreen from './pages/LoadingScreen'; // 2. Import your new Loading Screen (adjust path if needed)
 import LiquidsoapPublicClient from './components/LiquidsoapPublicClient';
 
 // Views - Admin
-import SchedulerView from './pages/SchedulerView';   // 🗓️ The Scheduler Page
+import SchedulerView from './pages/SchedulerView';   
 import MusicManagerView from './pages/MusicManagerView'
-//import CommanderView from './pages/CommanderView';   // 🎛️ The Live Controls Page
+import AboutView from './pages/AboutView';
+//import CommanderView from './pages/CommanderView'; 
 
-// Placeholders for other admin pages
+// Placeholders
 const PlaceholderLogs = () => <div className="p-8 text-center text-secondary"><h2>System Logs View (Coming Soon)</h2></div>;
 const PlaceholderSettings = () => <div className="p-8 text-center text-secondary"><h2>Settings View (Coming Soon)</h2></div>;
 
 function App() {
+  // 3. Create state to manage loading status
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 4. Simulate a loading delay (e.g., 3 seconds)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 3000); // Adjust time as needed
+
+    return () => clearTimeout(timer); // Cleanup
+  }, []);
+
   return (
-    // 💡 1. Wrap the entire application in the ThemeProvider
+    // 💡 Wrap everything in ThemeProvider so LoadingScreen gets the correct colors
     <ThemeProvider>
+      
+      {/* 5. Show LoadingScreen if loading is true. 
+          Since it has 'fixed z-50', it will overlay on top of everything. */}
+      {isLoading && <LoadingScreen />}
+
       <BrowserRouter>
         <Routes>
           
@@ -35,27 +54,18 @@ function App() {
           <Route path="/" element={<ClientLayout />}>
             {/* Main public listening page */}
             <Route index element={<LiquidsoapPublicClient />} /> 
+
+            <Route path="about" element={<AboutView/>} />
             
-            {/* Example: A public 'About Us' page */}
-            <Route path="about" element={<div className="p-10 text-primary"><h1>About This Station</h1></div>} /> 
+            {/* Note: You had a duplicate 'about' route here. I removed the placeholder one. */}
           </Route>
 
           {/* ======================= 2. ADMIN ROUTES (AdminLayout) ======================= */}
-          {/* All routes here inherit the Admin Theme via AdminLayout */}
           <Route path="/admin" element={<AdminLayout />}>
-            
-            {/* Path: /admin - Defaults to Scheduler */}
             <Route index element={<SchedulerView />} />
-
             <Route path="music" element={<MusicManagerView />} />
-            
-            {/* Path: /admin/commander - Live Controls */}
             {/* <Route path="commander" element={<CommanderView />} /> */}
-            
-            {/* Path: /admin/logs */}
             <Route path="logs" element={<PlaceholderLogs />} /> 
-            
-            {/* Path: /admin/settings */}
             <Route path="settings" element={<PlaceholderSettings />} /> 
           </Route>
 

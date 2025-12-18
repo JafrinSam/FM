@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-// 1. Import Lucide Icons
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Radio, 
   Users, 
@@ -11,81 +10,71 @@ import {
 } from 'lucide-react';
 
 /* ================= CONFIG ================= */
-// Adjust this to your actual public IP or domain in production
-const ICECAST_STATUS_URL = "http://localhost:8000/status-json.xsl"; 
-const STREAM_URL = "http://localhost:8000/radio.mp3";
-const POLLING_INTERVAL = 5000;
+const WS_URL = "ws://localhost:5000?role=client"; // Connect to your Node.js WebSocket
+const STREAM_URL = "http://localhost:8000/radio.mp3"; // Your Icecast stream
 
 export default function LiquidsoapPublicClient() {
-  const [metadata, setMetadata] = useState({
-    title: "Loading Stream...",
-    artist: "",
-    listeners: 0,
+  // --- STATE ---
+  const [track, setTrack] = useState({
+    title: "Waiting for stream...",
+    artist: "Station Offline",
+    type: "Offline", // 'Music', 'Prerecorded Show', 'Offline'
+    art: null
   });
 
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [listenerCount, setListenerCount] = useState(0);
+  const [isConnected, setIsConnected] = useState(false); // WebSocket status
+  const [isPlaying, setIsPlaying] = useState(false); // Audio player status
+  
+  // Use a ref to prevent double-connections in React Strict Mode
+  const ws = useRef(null);
 
-  /* ================= METADATA FETCH ================= */
-  const fetchMetadata = async (isInitial = false) => {
-    if (isInitial) setInitialLoading(true);
-
-    try {
-      const response = await fetch(ICECAST_STATUS_URL);
-      if (!response.ok) throw new Error("Failed to fetch Icecast status");
-
-      const data = await response.json();
-      const sources = Array.isArray(data.icestats.source)
-        ? data.icestats.source
-        : [data.icestats.source];
-
-      const stream = sources.find(
-        (s) => s?.listenurl && s.listenurl.endsWith("radio.mp3")
-      );
-
-      if (!stream) {
-        setMetadata({
-          title: "Stream Offline",
-          artist: "Stay tuned...",
-          listeners: 0,
-        });
-        return;
-      }
-
-      const fullTitle = stream.title || "Unknown Track";
-      let artist = "";
-      let title = fullTitle;
-
-      if (fullTitle.includes(" - ")) {
-        [artist, title] = fullTitle.split(" - ").map((s) => s.trim());
-      }
-
-      setMetadata((prev) => {
-        if (
-          prev.title === title &&
-          prev.artist === artist &&
-          prev.listeners === (stream.listeners || 0)
-        ) {
-          return prev;
-        }
-        return { title, artist, listeners: stream.listeners || 0 };
-      });
-
-      setError(null);
-    } catch (err) {
-      console.warn("Metadata fetch error:", err); // Warn instead of Error to keep console clean
-      setError("Stream Offline or Unreachable");
-    } finally {
-      if (isInitial) setInitialLoading(false);
-    }
-  };
-
-  /* ================= POLLING ================= */
+  /* ================= WEBSOCKET CONNECTION ================= */
   useEffect(() => {
-    fetchMetadata(true);
-    const interval = setInterval(() => fetchMetadata(false), POLLING_INTERVAL);
-    return () => clearInterval(interval);
+    const connect = () => {
+      ws.current = new WebSocket(WS_URL);
+
+      ws.current.onopen = () => {
+        console.log("✅ Connected to Radio WebSocket");
+        setIsConnected(true);
+      };
+
+      ws.current.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          // 1. Handle Song Updates
+          if (message.type === 'NOW_PLAYING') {
+            setTrack(message.data || { 
+              title: "Station Idle", 
+              artist: "", 
+              type: "Offline" 
+            });
+          }
+
+          // 2. Handle Listener Count Updates
+          if (message.type === 'LISTENER_COUNT') {
+            setListenerCount(message.data.count);
+          }
+
+        } catch (err) {
+          console.error("Failed to parse WebSocket message", err);
+        }
+      };
+
+      ws.current.onclose = () => {
+        console.log("❌ Disconnected from Radio WebSocket");
+        setIsConnected(false);
+        // Optional: Retry connection after 5 seconds
+        setTimeout(connect, 5000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (ws.current) ws.current.close();
+    };
   }, []);
 
   /* ================= UI ================= */
@@ -105,52 +94,60 @@ export default function LiquidsoapPublicClient() {
         </p>
       </header>
 
-      {/* ERROR BANNER */}
-      {error && (
+      {/* CONNECTION STATUS BANNER */}
+      {!isConnected && (
         <div className="bg-red-900/20 border border-red-500/50 text-red-500 p-4 rounded-xl mb-8 flex items-center justify-center gap-2">
             <AlertCircle size={20} />
-            <span className="font-medium">{error}</span>
+            <span className="font-medium">Live Updates Disconnected (Reconnecting...)</span>
         </div>
       )}
 
       {/* MAIN PLAYER CARD */}
       <div className="bg-card border border-border rounded-3xl shadow-2xl overflow-hidden relative group">
         
-        {/* Visualizer / Background Effect (Optional decorative element) */}
+        {/* Visualizer Background */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-accent to-transparent opacity-50"></div>
 
         <div className="p-8 md:p-12 flex flex-col items-center">
             
-            {/* Status Indicator */}
+            {/* Live Indicator */}
             <div className="mb-6">
-                <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold tracking-wider border ${
-                    !error 
+                <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold tracking-wider border transition-colors duration-300 ${
+                    track.type !== "Offline"
                     ? "bg-green-500/10 text-green-500 border-green-500/20" 
-                    : "bg-red-500/10 text-red-500 border-red-500/20"
+                    : "bg-gray-500/10 text-gray-500 border-gray-500/20"
                 }`}>
-                    <span className={`h-2 w-2 rounded-full ${!error ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></span>
-                    {!error ? "ON AIR" : "OFFLINE"}
+                    <span className={`h-2 w-2 rounded-full ${track.type !== "Offline" ? "bg-green-500 animate-pulse" : "bg-gray-500"}`}></span>
+                    {track.type !== "Offline" ? "ON AIR" : "OFF AIR"}
                 </span>
             </div>
 
             {/* Song Info */}
-            <div className="text-center mb-10 space-y-2">
-                {initialLoading ? (
-                    <div className="animate-pulse flex flex-col items-center gap-2">
-                        <div className="h-8 w-64 bg-surface rounded"></div>
-                        <div className="h-5 w-40 bg-surface rounded"></div>
-                    </div>
-                ) : (
-                    <>
-                        <h2 className="text-2xl md:text-4xl font-bold text-primary flex items-center justify-center gap-3">
-                            <Music size={28} className="text-accent hidden md:block" />
-                            {metadata.title}
-                        </h2>
-                        <p className="text-xl text-secondary font-medium flex items-center justify-center gap-2">
-                            <Mic2 size={18} className="opacity-70" />
-                            {metadata.artist || "Unknown Artist"}
-                        </p>
-                    </>
+            <div className="text-center mb-10 space-y-3">
+                <h2 className="text-2xl md:text-4xl font-bold text-primary flex items-center justify-center gap-3">
+                    {/* Switch icon based on Type 
+
+[Image of music icon]
+ */}
+                    {track.type === 'Prerecorded Show' ? (
+                       <Mic2 size={28} className="text-accent hidden md:block" />
+                    ) : (
+                       <Music size={28} className="text-accent hidden md:block" />
+                    )}
+                    
+                    {track.title}
+                </h2>
+                
+                <p className="text-xl text-secondary font-medium flex items-center justify-center gap-2">
+                    <span className="opacity-70">by</span>
+                    <span className="text-accent/90">{track.artist || "Unknown Artist"}</span>
+                </p>
+
+                {/* Optional Album Badge */}
+                {track.album && track.album !== "Unknown Album" && (
+                  <p className="text-sm text-secondary/60 italic">
+                    {track.album}
+                  </p>
                 )}
             </div>
 
@@ -170,20 +167,23 @@ export default function LiquidsoapPublicClient() {
             
             <p className="text-xs text-secondary mt-4 flex items-center gap-1 opacity-70">
                 <Volume2 size={12} />
-                High Quality MP3 Stream (128kbps)
+                High Quality MP3 Stream
             </p>
         </div>
 
         {/* Footer Stats Strip */}
         <div className="bg-surface border-t border-border p-4 md:px-12 flex justify-between items-center text-sm">
-            <div className="flex items-center gap-2 text-primary font-medium">
+            
+            {/* Real-time Listeners from WebSocket */}
+            <div className="flex items-center gap-2 text-primary font-medium transition-all duration-300">
                 <Users size={18} className="text-accent" />
-                <span>{metadata.listeners} Listening</span>
+                <span>{listenerCount} Listening Now</span>
             </div>
             
+            {/* Stream Health */}
             <div className="flex items-center gap-2 text-secondary">
                 <Activity size={18} className={isPlaying ? "text-green-500 animate-pulse" : "text-gray-500"} />
-                <span>Stream Health: {error ? "Critical" : "Good"}</span>
+                <span>Status: {isConnected ? "Live Data" : "Connecting..."}</span>
             </div>
         </div>
       </div>

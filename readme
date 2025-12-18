@@ -1,0 +1,680 @@
+📡 FM Radio Streaming System – Full Architecture & Developer Reference
+
+A complete guide to building a cloud-based FM radio streaming system with:
+
+Browser-based admin live (WebRTC → SRS)
+
+Auto music playback (Liquidsoap → SRS)
+
+Secure token-based publishing (Node.js backend)
+
+HLS streaming for web & mobile listeners
+
+SRS http_hooks for authentication
+
+Failover (admin → auto music)
+
+This document explains everything you need to remember and reference.
+
+🧱 1. High-Level System Overview
+
+The platform supports:
+
+Admin speaking live from browser (WebRTC)
+
+Automatic music playback when admin is offline
+
+Playback for listeners on web or mobile via HLS
+
+Secure publishing using backend-controlled tokens
+
+Stream switching handled by Liquidsoap fallback logic
+
+🏛️ 2. Core Components
+Component	Purpose
+SRS (Simple Realtime Server)	Accepts WebRTC/RTMP input, outputs HLS/WebRTC/FLV
+Liquidsoap	Auto DJ engine, random playlists, scheduling, fallback logic
+Node.js Backend	Auth, issue stream tokens, validate SRS hooks
+React Admin Panel	Admin “Go Live” WebRTC interface
+React / Mobile App	Listener UI, plays HLS stream
+Redis/DB	Store live state, schedule, tokens
+🖧 3. Streaming Flow Architecture
+Admin Browser (WebRTC)
+        │
+        ▼
+      SRS (Ingest)
+   - WebRTC receive
+   - RTMP receive (auto music)
+   - HLS output
+        │
+        ▼
+ Liquidsoap (Auto DJ)
+        │
+        ▼
+      SRS
+        │
+        ▼
+Listeners (Web/Mobile)
+        │
+        ▼
+HLS Player (m3u8)
+
+
+Admin live audio comes from WebRTC.
+
+Auto music comes from Liquidsoap.
+
+Liquidsoap can also handle stream switching.
+
+SRS outputs a single final HLS URL for listeners.
+
+🔐 4. Security Flow (Prevent Unauthorized Publishing)
+
+SRS uses http_hooks to validate publishing:
+
+Admin → SRS → Backend /api/srs/on-publish → Allow/Deny
+
+SRS calls backend every time someone tries to publish:
+{
+  "action": "on_publish",
+  "app": "live",
+  "stream": "admin",
+  "param": "?token=XYZ"
+}
+
+
+Backend returns:
+
+{ "code": 0 }  → allow
+{ "code": 1 }  → deny
+
+🧩 5. SRS Server Configuration Explained
+listen 1935;                # RTMP port
+http_server {               # HLS & static files
+    enabled on;
+    listen 8080;
+    dir ./objs/nginx/html;
+}
+
+http_api {                  # WebRTC signaling API
+    enabled on;
+    listen 1985;
+}
+
+rtc_server {                # WebRTC media transport
+    enabled on;
+    listen 8000;
+    candidate YOUR_PUBLIC_IP;
+}
+
+vhost __defaultVhost__ {
+
+    rtmp { enabled on; }    # Allow RTMP ingest (auto DJ)
+    rtc  { enabled on; }    # Allow WebRTC ingest/play
+
+    hls {
+        enabled on;
+        hls_fragment 3;
+        hls_window 30;
+        hls_path ./objs/nginx/html;
+    }
+
+    # Security hooks
+    http_hooks {
+        enabled on;
+        on_publish   http://backend:3000/api/srs/on-publish;
+        on_unpublish http://backend:3000/api/srs/on-unpublish;
+    }
+}
+
+What this does:
+
+Accept WebRTC input on webrtc://.../live/admin
+
+Accept RTMP input on rtmp://.../live/music
+
+Output HLS on http://server:8080/live/*.m3u8
+
+Ask backend on every publish attempt (“Allow or deny?”)
+
+🎤 6. Admin “Go Live” Workflow (WebRTC)
+Step-by-step:
+
+Admin logs in to React admin panel
+
+Frontend requests:
+
+GET /api/live/publish-config
+
+
+Backend verifies admin → returns:
+
+{
+  "streamUrl": "webrtc://server/live/admin?token=SIGNED_JWT",
+  "srsApiUrl": "http://server:1985/rtc/v1/publish/"
+}
+
+
+Frontend uses getUserMedia({ audio:true })
+
+Frontend sends SDP offer to SRS via /rtc/v1/publish/
+
+SRS calls backend /api/srs/on-publish
+
+Backend validates token → allow/deny
+
+If allowed:
+
+WebRTC stream flows to SRS
+
+SRS generates:
+
+http://server:8080/live/admin.m3u8
+
+🎵 7. Auto Music Flow (Liquidsoap)
+
+Liquidsoap generates continuous audio:
+
+music = playlist("/radio/music")
+random_music = random(weights=[1], [music])
+
+output.rtmp(
+   url="rtmp://server/live/music",
+   random_music
+)
+
+Using fallback logic:
+admin = input.rtmp("rtmp://server/live/admin")
+music = playlist("/radio/music")
+
+radio = fallback([admin, music])
+
+output.rtmp("rtmp://server/live/radio", radio)
+
+
+Listeners use:
+
+http://server:8080/live/radio.m3u8
+
+
+Liquidsoap automatically switches:
+
+Admin live → send admin
+
+Admin offline → send music
+
+📱 8. Listener App (Web/Mobile)
+
+Frontend periodically checks:
+
+GET /api/live/state
+
+
+Returns:
+
+{
+  "isLive": true,
+  "streamUrl": "http://server:8080/live/radio.m3u8"
+}
+
+
+Player:
+
+<audio controls autoplay src="http://server:8080/live/radio.m3u8"></audio>
+
+
+Works on:
+
+Web
+
+Android
+
+iOS
+
+React Native (via hls support)
+
+🧲 9. How Unauthorized Access Is Prevented
+
+☑ Server never trusts clients directly
+☑ Admin must login to get a stream token
+☑ WebRTC publish requires token
+☑ SRS calls backend for validation
+☑ Backend checks token, expiry, permissions
+☑ Only backend can authorize publish
+☑ Attackers cannot:
+
+Guess a valid token
+
+Publish without backend approval
+
+Use expired tokens
+
+📦 10. Useful Additional SRS Configurations
+a. on_play / on_stop hooks (optional)
+on_play  http://backend:3000/api/srs/on-play
+on_stop  http://backend:3000/api/srs/on-stop
+
+
+Use for:
+
+Listener counting
+
+Subscription-only streams
+
+Analytics
+
+b. Recording streams (DVR support)
+dvr {
+    enabled on;
+    dvr_path ./objs/nginx/html/dvr;
+    dvr_plan session;
+    dvr_apply all;
+}
+
+c. Cleanup old HLS segments
+hls_cleanup on;
+
+d. Larger RTMP chunk size
+rtmp {
+    enabled on;
+    chunk_size 60000;
+}
+
+📚 11. Full Data Flow Summary Diagram
+       ┌────────────────────────────┐
+       │        Admin (Web)         │
+       │  getUserMedia + WebRTC     │
+       └─────────────┬──────────────┘
+                     │
+          publish-config (JWT)
+                     │
+             Node Backend
+     validates admin, issues token
+                     │
+                     ▼
+       ┌────────────────────────────┐
+       │           SRS              │
+       │ RTC ingest + HLS output    │
+       └─────────────┬──────────────┘
+                     │
+             http_hooks verify
+               via backend
+                     │
+                     ▼
+        Liquidsoap (admin/music fallback)
+                     │
+                     ▼
+      HLS output → http://server/live/radio.m3u8
+                     │
+                     ▼
+             Web & Mobile Listeners
+
+🛠 12. Folder Structure Recommendation
+project/
+ ├── backend/           # Node.js (Nest/Express)
+ │    ├── routes/
+ │    ├── controllers/
+ │    ├── services/
+ │    ├── srs-hooks/    # on-publish, on-unpublish APIs
+ │    └── live/         # token generation, live-state
+ │
+ ├── admin-frontend/    # React admin panel (WebRTC publish UI)
+ │
+ ├── client-frontend/   # Public website (player)
+ │
+ ├── liquidsoap/
+ │    └── radio.liq     # auto music + fallback
+ │
+ ├── srs/
+ │    └── srs.conf
+ │
+ └── docker-compose.yml
+
+🎯 13. Key Points to Always Remember
+
+SRS does not generate audio → Liquidsoap does
+
+SRS streams media → WebRTC in → HLS out
+
+Security is done through:
+
+Backend-issued tokens
+
+SRS http_hooks validation
+
+WebRTC ingest always needs:
+
+srsApiUrl (1985)
+
+streamUrl (with token)
+
+HLS is the best for listeners:
+
+Works well on low network
+
+Adaptive bitrate possible
+
+Liquidsoap handles:
+
+Random playlist
+
+Scheduling
+
+Live-switching
+
+🧩 14. Final Master Listener URL
+
+Your entire system outputs one final stream:
+
+http://YOUR_SERVER:8080/live/radio.m3u8
+
+
+This is the link you give to:
+
+Web player
+
+Mobile app
+
+Smart speakers
+
+Embedded players
+
+Everything else (admin, fallback, auto music) is handled internally.
+
+
+
+
+
+
+
+1️⃣ Detailed Flow – Admin Goes Live from Browser
+┌──────────────────────────────────────────────────────────────┐
+│                        ADMIN BROWSER                         │
+│                (React Admin "Go Live" Page)                  │
+└───────────────┬──────────────────────────────────────────────┘
+                │
+                │ 1. Admin logs in with email/password
+                │
+                ▼
+       ┌──────────────────────────────┐
+       │       NODE BACKEND          │
+       │   /api/auth/login           │
+       └──────────────┬──────────────┘
+                      │
+                      │ 2. Backend verifies credentials,
+                      │    issues JWT (admin access token)
+                      │
+                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│                        ADMIN BROWSER                         │
+│         Stores JWT (memory/localStorage/cookie)              │
+└───────────────┬──────────────────────────────────────────────┘
+                │
+                │ 3. Admin clicks "Go Live"
+                │    Frontend calls:
+                │    GET /api/live/publish-config
+                │    Authorization: Bearer <JWT>
+                │
+                ▼
+       ┌──────────────────────────────┐
+       │       NODE BACKEND          │
+       │   /api/live/publish-config  │
+       └──────────────┬──────────────┘
+                      │
+                      │ 4. Backend:
+                      │    - Verifies JWT, role == "admin"
+                      │    - Creates short-lived stream token (JWT/UUID)
+                      │    - Associates token with:
+                      │          app   = "live"
+                      │          stream= "admin"
+                      │          exp   = NOW + 5 minutes
+                      │    - Response:
+                      │        {
+                      │          streamUrl: "webrtc://SRS_IP/live/admin?token=XYZ",
+                      │          srsApiUrl: "http://SRS_IP:1985/rtc/v1/publish"
+                      │        }
+                      │
+                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│                        ADMIN BROWSER                         │
+│ 5. Receives streamUrl + srsApiUrl                            │
+│    - Requests mic: getUserMedia({ audio:true })              │
+│    - Creates RTCPeerConnection                               │
+│    - Adds mic track to PeerConnection                        │
+│    - Creates SDP offer                                       │
+│    - Sends HTTP POST to SRS API:                             │
+│                                                              │
+│   POST http://SRS_IP:1985/rtc/v1/publish                     │
+│   {                                                          │
+│     api: "http://SRS_IP:1985/rtc/v1/publish",                │
+│     streamurl: "webrtc://SRS_IP/live/admin?token=XYZ",       │
+│     sdp: "<offer_sdp>"                                       │
+│   }                                                          │
+└───────────────┬──────────────────────────────────────────────┘
+                │
+                │ 6. SRS receives publish request (WebRTC SDP)
+                │    Extracts:
+                │       app    = "live"
+                │       stream = "admin"
+                │       param  = "?token=XYZ"
+                │
+                ▼
+       ┌──────────────────────────────┐
+       │              SRS            │
+       │        (http_hooks)         │
+       └──────────────┬──────────────┘
+                      │
+                      │ 7. SRS triggers http_hook:
+                      │
+                      │   POST http://BACKEND:3000/api/srs/on-publish
+                      │   {
+                      │      "action": "on_publish",
+                      │      "app": "live",
+                      │      "stream": "admin",
+                      │      "param": "?token=XYZ",
+                      │      "ip": "<admin_ip>"
+                      │   }
+                      │
+                      ▼
+       ┌──────────────────────────────┐
+       │       NODE BACKEND          │
+       │    /api/srs/on-publish      │
+       └──────────────┬──────────────┘
+                      │
+                      │ 8. Backend:
+                      │    - Parses param -> token = "XYZ"
+                      │    - Validates token:
+                      │         * signature (if JWT)
+                      │         * expiry
+                      │         * app == "live"
+                      │         * stream == "admin"
+                      │         * tied to this admin user
+                      │    - If valid:
+                      │         { "code": 0 }
+                      │      else:
+                      │         { "code": 1, "message": "Unauthorized" }
+                      │
+                      ▼
+       ┌──────────────────────────────┐
+       │             SRS             │
+       └──────────────┬──────────────┘
+                      │
+                      │ 9A. If code == 0:
+                      │      - Accept WebRTC publish
+                      │      - Create stream: app="live", stream="admin"
+                      │      - Start receiving RTP audio from browser
+                      │      - Start generating HLS:
+                      │          http://SRS_IP:8080/live/admin.m3u8
+                      │
+                      │ 9B. If code != 0:
+                      │      - Reject WebRTC publish
+                      │      - Close connection to admin
+                      │
+                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│                        ADMIN BROWSER                         │
+│ 10. If accepted:                                             │
+│     - setRemoteDescription(answer_sdp from SRS)              │
+│     - WebRTC connection established                          │
+│     - Admin now streaming live audio → SRS                   │
+└──────────────────────────────────────────────────────────────┘
+
+2️⃣ Detailed Flow – Liquidsoap Fallback (Admin vs Auto-Music)
+
+Here we assume Liquidsoap does stream switching and SRS only sees the final combined stream /live/radio.
+
+                           ┌────────────────────┐
+                           │  Music Files (mp3) │
+                           │  /radio/music      │
+                           └─────────┬──────────┘
+                                     │
+                         1. Auto playlist, random, schedule
+                                     │
+                                     ▼
+                      ┌───────────────────────────┐
+                      │        LIQUIDSOAP         │
+                      │  radio.liq script         │
+                      └───────────┬───────────────┘
+                                  │
+                                  │ 2. Define sources:
+                                  │
+                                  │   admin = input.rtmp("rtmp://SRS/live/admin")
+                                  │   music = playlist("/radio/music")
+                                  │
+                                  │   radio = fallback([admin, music])
+                                  │
+                                  │ 3. Output combined stream:
+                                  │
+                                  ▼
+                        output.rtmp("rtmp://SRS/live/radio", radio)
+                                  │
+                                  ▼
+                   ┌──────────────────────────────────┐
+                   │               SRS                │
+                   │         RTMP ingest:             │
+                   │        app="live", stream="radio"│
+                   │                                  │
+                   │ HLS output:                      │
+                   │  http://SRS_IP:8080/live/radio.m3u8
+                   └──────────────────────────────────┘
+
+How fallback logic works:
+
+When admin is live
+
+Admin → WebRTC → SRS → SRS exposes RTMP/HLS for /live/admin
+
+Liquidsoap’s input.rtmp("rtmp://SRS/live/admin") sees valid live input
+
+fallback([admin, music]) chooses admin as active source
+
+Listeners hear admin voice/music via /live/radio.m3u8
+
+When admin stops
+
+WebRTC connection closes → SRS /live/admin stops
+
+Liquidsoap input for admin becomes offline
+
+fallback([admin, music]) automatically switches to music
+
+Listeners still use /live/radio.m3u8, but now hear auto music
+
+Key point:
+👉 Listeners always connect to the same HLS URL (e.g. /live/radio.m3u8).
+They never need to switch anything – the switching happens inside Liquidsoap.
+
+3️⃣ Detailed Flow – Listener (Web or Mobile)
+┌────────────────────────────────────────────────────────────────┐
+│                   WEB / MOBILE LISTENER APP                    │
+│        (React, Next.js, React Native, etc.)                    │
+└───────────────┬────────────────────────────────────────────────┘
+                │
+                │ 1. App loads home/player screen
+                │
+                │ 2. Calls backend:
+                │
+                │   GET /api/live/state
+                │
+                ▼
+       ┌───────────────────────────────────┐
+       │           NODE BACKEND           │
+       └──────────────────┬────────────────┘
+                          │
+                          │ 3. Backend checks:
+                          │    - Is there a current live session?
+                          │      e.g. from Redis/DB flag: station:fm1:isLive
+                          │    - What is the public play URL?
+                          │      (usually always /live/radio.m3u8)
+                          │
+                          │  Returns:
+                          │    {
+                          │      "isLive": true/false,
+                          │      "playUrl": "http://SRS_IP:8080/live/radio.m3u8",
+                          │      "nowPlaying": { show, title, dj, etc. }
+                          │    }
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────────────┐
+│                   WEB / MOBILE LISTENER APP                    │
+│ 4. Receives live state + playUrl                               │
+│    - Updates UI:                                               │
+│        if isLive: show "🔴 LIVE"                               │
+│        else:   show "Auto Music" or "Offline"                  │
+│    - Creates HLS audio player:                                 │
+│                                                                │
+│   <audio controls autoplay                                     │
+│          src="http://SRS_IP:8080/live/radio.m3u8">             │
+│                                                                │
+│   or (React Native):                                           │
+│   <Video source={{ uri: playUrl }} ... />                      │
+│                                                                │
+│ 5. Player requests HLS:                                        │
+│                                                                │
+│   GET http://SRS_IP:8080/live/radio.m3u8                       │
+│   GET http://SRS_IP:8080/live/radio-0.ts  (segments)           │
+│   GET http://SRS_IP:8080/live/radio-1.ts                       │
+│   ...                                                          │
+│                                                                │
+└───────────────┬────────────────────────────────────────────────┘
+                │
+                │ 6. SRS serves playlist + segments
+                │    (generated from Liquidsoap RTMP input)
+                │
+                ▼
+       ┌───────────────────────────────────┐
+       │                 SRS              │
+       │   HLS output for /live/radio     │
+       └───────────────────────────────────┘
+
+4️⃣ One Big End-to-End Summary Flow
+[Admin Login]
+Admin Browser  →  Node Backend (JWT)
+
+[Prepare Live]
+Admin Browser  →  /api/live/publish-config (JWT)
+                ←  streamUrl (webrtc://SRS/live/admin?token=XYZ)
+                    srsApiUrl (http://SRS:1985/rtc/v1/publish)
+
+[Start Live Stream via WebRTC]
+Admin Browser  →  POST SRS /rtc/v1/publish (with streamUrl + SDP)
+SRS            →  POST Backend /api/srs/on-publish (http_hook)
+Backend        →  { "code": 0 } if token valid
+SRS            →  Accept WebRTC, create stream live/admin
+SRS            →  HLS at /live/admin.m3u8 (optional)
+SRS            →  RTMP/HLS used by Liquidsoap as "admin" input
+
+[Auto Music + Fallback]
+Liquidsoap     →  Reads mp3 folder, builds playlist
+Liquidsoap     →  input.rtmp("rtmp://SRS/live/admin")
+Liquidsoap     →  fallback([admin, music])
+Liquidsoap     →  RTMP out "rtmp://SRS/live/radio"
+SRS            →  HLS out "/live/radio.m3u8"
+
+[Listener Playback]
+Web/Mobile     →  GET /api/live/state (to Backend)
+Backend        →  { isLive, playUrl: "http://SRS/live/radio.m3u8" }
+Web/Mobile     →  HLS requests to SRS
+SRS            →  Serves playlist + segments
+User hears admin or music depending on Liquidsoap fallback
+

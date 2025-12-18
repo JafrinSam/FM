@@ -2,7 +2,7 @@
 # Logging
 ############################################
 settings.log.stdout := true
-settings.log.file := false
+settings.log.file := true
 
 ############################################
 # Telnet
@@ -29,8 +29,12 @@ mic_gain    = ref(1.0)
 master_gain = ref(1.0)
 
 ############################################
-# REQUEST QUEUE (CONTROLLED BY NODE.JS)
+# QUEUES (High & Normal Priority)
 ############################################
+# 1. High Priority: For Scheduled Events (Interrupts others)
+schedule_queue = request.queue(id="schedule_queue")
+
+# 2. Normal Priority: For User Requests
 music_queue = request.queue(id="queue")
 
 ############################################
@@ -38,20 +42,85 @@ music_queue = request.queue(id="queue")
 ############################################
 auto_playlist = playlist(
   id="playlist",
-  "/radio/music"
+  "/radio/music",
+  reload_mode="watch",
+  mode="random"
 )
+
+############################################
+# TRANSITIONS (Fade & Skip Logic)
+############################################
+
+# Transition: SWITCHING TO SCHEDULE
+# This fades out the current song AND skips it so it doesn't resume later.
+def to_schedule(old, new) = 
+  log("⚠️ Interrupting for Scheduled Event!")
+  
+  # Force the user queue to skip the current track
+  # (Using ignore() because we just want the side effect)
+  ignore(music_queue.skip()) 
+
+  # Crossfade: Fade in new (schedule), Fade out old (music)
+  add([fade.initial(duration=3., new), fade.final(duration=3., old)])
+end
+
+# Transition: STANDARD (Between songs or back to music)
+def to_music(old, new) =
+  # Standard crossfade
+  add([fade.initial(duration=3., new), fade.final(duration=3., old)])
+end
 
 ############################################
 # SOURCE SELECTION
 ############################################
+# The order in the list [] determines priority.
+# track_sensitive=false allows us to interrupt the current song immediately.
+
 radio_music = fallback(
-  track_sensitive=false,
+  track_sensitive=false, 
+  transitions=[to_schedule, to_music, to_music, to_music],
   [
-    music_queue,
-    auto_playlist,
+    schedule_queue, # 1. High Priority (Uses to_schedule transition)
+    music_queue,    # 2. Medium Priority
+    auto_playlist,  # 3. Low Priority
     blank(duration=0.5)
   ]
 )
+
+# ==========================================================
+#  INSERTED HERE: TRACKING MUST HAPPEN BEFORE MIXING
+# ==========================================================
+
+############################################
+# TRACKING CURRENT FILENAME
+############################################
+current_file = ref("No file playing")
+
+def update_filename(m) =
+  fname = m["filename"]
+  if fname != "" then
+    current_file := fname
+  else
+    current_file := "Unknown File"
+  end
+  log("Now Playing File: #{current_file()}")
+end
+
+def peek_meta(m) =
+  update_filename(m)
+  m
+end
+
+radio_music = metadata.map(peek_meta, radio_music)
+
+def get_filename_cmd(_) =
+  current_file()
+end
+server.register("get_filename", get_filename_cmd)
+
+# ==========================================================
+#  END INSERT
+# ==========================================================
 
 ############################################
 # ADMIN MIC (RTMP FROM SRS)
@@ -78,7 +147,7 @@ output.icecast(
 )
 
 ############################################
-# TELNET COMMANDS (QUEUE + GAIN)
+# TELNET COMMANDS
 ############################################
 
 def play_song_cmd(name) =
@@ -86,6 +155,27 @@ def play_song_cmd(name) =
   "Queued #{name}"
 end
 server.register("play_song", play_song_cmd)
+
+# NEW: Command for external scheduler to use High Priority Queue
+# 2. Scheduled Events -> /radio/scheduled/
+def play_scheduled_cmd(name) =
+  # 1. Strip leading and trailing quotes using Regex
+  #    Pattern ^" means "starts with quote"
+  #    Pattern "$ means "ends with quote"
+  clean_name = string.replace(pattern="^\"|\"$", (fun (_) -> ""), name)
+  
+  # 2. Build the full path
+  #    Note: Node.js sends "scheduled/filename.mp3", so we just prepend /radio/
+  uri = "file:///radio/#{clean_name}"
+  
+  # 3. Log it for debugging
+  print("SCHEDULER: Received '#{name}' -> Cleaned to '#{clean_name}' -> Pushing: #{uri}")
+  
+  schedule_queue.push.uri(uri)
+  "Scheduled #{clean_name} (High Priority)"
+end
+server.register("play_scheduled", play_scheduled_cmd)
+
 
 def next_song_cmd(_) =
   music_queue.skip()
@@ -131,9 +221,12 @@ def scheduler_tick() =
      and now.min == s.minute then
 
     log("Scheduler (UTC): executing #{s.file}")
-    music_queue.push.uri("file:///radio/music/#{s.file}")
+    
+    # !!! CRITICAL CHANGE !!!
+    # Push to schedule_queue (High Priority) instead of music_queue
+    schedule_queue.push.uri("file:///radio/music/#{s.file}")
 
-    # mark as executed (explicit rebuild)
+    # mark as executed
     scheduled := {
       hour   = s.hour,
       minute = s.minute,
@@ -144,19 +237,17 @@ def scheduler_tick() =
 end
 
 ############################################
-# BACKGROUND SCHEDULER (UTC, EVERY 1 SECOND)
+# BACKGROUND SCHEDULER
 ############################################
 thread.run(
   every={1.},
   fun () -> scheduler_tick()
 )
 
-
 ############################################
 # SCHEDULER TELNET COMMANDS
 ############################################
 
-# Set ONE schedule (Node.js uses this)
 def set_schedule_cmd(args) =
   parts = string.split(separator=" ", args)
 
@@ -179,7 +270,6 @@ def set_schedule_cmd(args) =
 end
 server.register("set_schedule", set_schedule_cmd)
 
-# Check if executed or pending
 def schedule_status_cmd(_) =
   s = scheduled()
   if s.done then
@@ -190,7 +280,6 @@ def schedule_status_cmd(_) =
 end
 server.register("schedule_status", schedule_status_cmd)
 
-# Cancel pending schedule
 def cancel_schedule_cmd(_) =
   scheduled := {
     hour   = -1,
@@ -202,9 +291,8 @@ def cancel_schedule_cmd(_) =
 end
 server.register("cancel_schedule", cancel_schedule_cmd)
 
-
 ############################################
-# PRINT STARTUP UTC TIME (ONCE)
+# PRINT STARTUP UTC TIME
 ############################################
 def log_startup_time() =
   t = time.utc()
