@@ -1,17 +1,27 @@
 import mongoose from 'mongoose';
 
 const ScheduleSchema = new mongoose.Schema({
-  hour: {
+  // What you see (IST)
+  localHour: {
     type: Number,
     required: true,
     min: 0,
     max: 23,
   },
-  minute: {
+  localMinute: {
     type: Number,
     required: true,
     min: 0,
     max: 59,
+  },
+  // What the Scheduler uses (UTC)
+  utcHour: {
+    type: Number,
+    required: true, 
+  },
+  utcMinute: {
+    type: Number,
+    required: true,
   },
   filename: {
     type: String,

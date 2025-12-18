@@ -1,37 +1,30 @@
-import { Schedule } from '../models/Schedule.js'; // Adjust path as necessary
-import { sendCommand } from '../commander/liquidsoapCommander.js'; // Adjust path as necessary
+import { Schedule } from '../models/Schedule.js'; 
+import { sendCommand } from '../commander/liquidsoapCommander.js'; 
 
 const POLLING_INTERVAL = 5000; // 5 seconds
-let processedSchedules = new Set(); // Tracks schedules processed in the current minute
+let processedSchedules = new Set(); 
 
 class LiquidsoapScheduler {
   constructor() {
     this.interval = null;
     this.telnetConfig = {
       host: "127.0.0.1",
-      port: 1234, // Ensure this matches your liquidsoap config
+      port: 1234, 
     };
     console.log("Liquidsoap Scheduler initialized.");
   }
 
-  /**
-   * Starts the polling loop.
-   */
   start() {
     if (this.interval) {
       console.warn("Scheduler is already running.");
       return;
     }
     
-    // Run the check immediately, then start the interval
     this.checkSchedules();
     this.interval = setInterval(() => this.checkSchedules(), POLLING_INTERVAL);
-    console.log(`Scheduler started, checking every ${POLLING_INTERVAL / 1000} seconds.`);
+    console.log(`Scheduler started, checking (UTC) every ${POLLING_INTERVAL / 1000} seconds.`);
   }
 
-  /**
-   * Stops the polling loop.
-   */
   stop() {
     if (this.interval) {
       clearInterval(this.interval);
@@ -40,59 +33,56 @@ class LiquidsoapScheduler {
     }
   }
 
-  /**
-   * Core logic to check MongoDB for schedules matching the current time.
-   */
   async checkSchedules() {
     const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
+    
+    // 1. Get current SYSTEM time in UTC
+    const currentUTCHour = now.getUTCHours();
+    const currentUTCMinute = now.getUTCMinutes();
 
-    // Reset the processed list at the start of every new minute
-    if (now.getSeconds() < POLLING_INTERVAL / 1000) {
+    if (now.getSeconds() < 5) {
         processedSchedules.clear();
     }
     
     try {
-      // Find all schedules matching the current hour and minute
+      // 2. Query the DB using the stored UTC fields
       const schedulesToRun = await Schedule.find({
-        hour: currentHour,
-        minute: currentMinute,
+        utcHour: currentUTCHour,     // Match DB UTC with System UTC
+        utcMinute: currentUTCMinute, 
       });
 
       for (const schedule of schedulesToRun) {
-        // Use the MongoDB _id to ensure we only run the schedule once per minute
         if (!processedSchedules.has(schedule._id.toString())) {
           await this.executeSchedule(schedule);
           processedSchedules.add(schedule._id.toString());
         }
       }
     } catch (error) {
-      console.error("Scheduler Error: Could not check MongoDB for schedules.", error);
+      console.error("Scheduler Error:", error);
     }
   }
 
-  /**
-   * Executes the Liquidsoap command for a given schedule.
-   * @param {object} schedule The schedule document from MongoDB.
-   */
+
   async executeSchedule(schedule) {
     const { hour, minute, filename } = schedule;
-    console.log(`\n*** MATCH FOUND: Executing schedule for ${hour}:${minute} - ${filename} ***`);
+    console.log(`\n*** MATCH FOUND (UTC): ${hour}:${minute} - ${filename} ***`);
 
-    // The Liquidsoap command uses your registered 'play_song' function.
-    // Liquidsoap command: play_song <filename>
-    const command = `play_song ${filename}`; 
+    // Path logic (adjust if your scheduled files are in /radio/music or /radio/scheduled)
+    // If files are in /radio/scheduled, we use "../scheduled/"
+    const relativePath = `scheduled/${filename}`;
+
+    // ⚠️ CRITICAL UPDATE: 
+    // 1. Use 'play_scheduled' to target the VIP/High-Priority queue.
+    // 2. Wrap the path in quotes to handle spaces safely.
+    const command = `play_scheduled "${relativePath}"`; 
 
     try {
       const response = await sendCommand(command, this.telnetConfig);
-      console.log(`Liquidsoap Response for '${command}': ${response}`);
+      console.log(`Liquidsoap Response: ${response}`);
     } catch (error) {
       console.error(`Failed to send command to Liquidsoap: ${error.message}`);
-      // The original Telnet module handles connection/timeout errors.
     }
   }
 }
 
-// Export and instantiate the scheduler
 export const scheduler = new LiquidsoapScheduler();
