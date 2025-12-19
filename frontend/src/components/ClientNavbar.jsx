@@ -1,19 +1,44 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom'; // 1. Import useLocation
 import { useTheme } from '../context/ThemeContext';
-// 1. Import Lucide Icons
-import { Sun, Moon, Home, Info, Radio } from 'lucide-react';
+import { Sun, Moon, Home, Info, Radio, Menu, X } from 'lucide-react';
 
 export default function ClientNavbar() {
   const { themeName, toggleTheme } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
+  const location = useLocation(); // 2. Get current location
+
+  const closeMenu = () => setIsOpen(false);
+
+  // 3. Helper function to determine active state styles
+  const getLinkClass = (path) => {
+    const isActive = location.pathname === path;
+    const baseClass = "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all group";
+    
+    // If active: Accent color + subtle background
+    // If inactive: Secondary color + hover effects
+    return isActive 
+      ? `${baseClass} text-accent bg-accent/10 font-bold shadow-sm` 
+      : `${baseClass} text-secondary hover:text-accent hover:bg-background`;
+  };
+
+  // Mobile specific class helper (larger padding/text)
+  const getMobileLinkClass = (path) => {
+    const isActive = location.pathname === path;
+    const baseClass = "flex items-center gap-3 px-3 py-3 rounded-md text-base font-medium transition-colors";
+    
+    return isActive
+      ? `${baseClass} text-accent bg-accent/10 font-bold border-l-4 border-accent`
+      : `${baseClass} text-secondary hover:text-accent hover:bg-background`;
+  };
 
   return (
-    <nav className="bg-surface text-primary shadow-xl sticky top-0 z-10 border-b border-border transition-colors duration-300">
+    <nav className="bg-surface text-primary shadow-xl sticky top-0 z-50 border-b border-border transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
           
-          {/* Branding / Logo */}
-          <Link to="/" className="flex-shrink-0 flex items-center gap-3 group cursor-pointer">
+          {/* --- BRANDING / LOGO --- */}
+          <Link to="/" onClick={closeMenu} className="flex-shrink-0 flex items-center gap-3 group cursor-pointer z-50">
             <div className="h-12 w-12 relative overflow-hidden flex items-center justify-center">
                 <video 
                     autoPlay 
@@ -38,31 +63,25 @@ export default function ClientNavbar() {
             </div>
           </Link>
 
-          {/* Navigation Links */}
-          <div className="flex items-center space-x-4">
-            <Link 
-              to="/" 
-              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:text-accent hover:bg-background transition-colors group"
-            >
-              <Home size={16} className="group-hover:text-accent transition-colors" />
+          {/* --- DESKTOP NAVIGATION --- */}
+          <div className="hidden md:flex items-center space-x-4">
+            <Link to="/" className={getLinkClass('/')}>
+              <Home size={16} className={location.pathname === '/' ? "text-accent" : "group-hover:text-accent transition-colors"} />
               Home
             </Link>
             
-            <Link 
-              to="/about" 
-              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-secondary hover:text-accent hover:bg-background transition-colors group"
-            >
-              <Info size={16} className="group-hover:text-accent transition-colors" />
+            <Link to="/about" className={getLinkClass('/about')}>
+              <Info size={16} className={location.pathname === '/about' ? "text-accent" : "group-hover:text-accent transition-colors"} />
               About
             </Link>
 
-            {/* Listen Button (Visual CTA) */}
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-bold animate-pulse">
+            {/* Listen Badge */}
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-bold animate-pulse cursor-default">
                 <Radio size={14} />
                 <span>LIVE</span>
             </div>
 
-            {/* THEME TOGGLE */}
+            {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
               className="ml-2 p-2 rounded-full bg-background border border-border text-primary hover:text-accent hover:border-accent transition-all shadow-sm flex items-center justify-center"
@@ -71,6 +90,68 @@ export default function ClientNavbar() {
               {themeName === 'light' ? <Moon size={20} /> : <Sun size={20} />}
             </button>
           </div>
+
+          {/* --- MOBILE CONTROLS --- */}
+          <div className="flex md:hidden items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-[10px] font-bold animate-pulse">
+                <Radio size={12} />
+                <span>LIVE</span>
+            </div>
+
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="p-2 rounded-md text-secondary hover:text-accent hover:bg-background focus:outline-none transition-colors"
+            >
+              {isOpen ? <X size={28} /> : <Menu size={28} />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* --- MOBILE DROPDOWN MENU --- */}
+      <div 
+        className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out border-b border-border bg-surface ${
+          isOpen ? "max-h-screen opacity-100" : "max-h-0 opacity-0 border-none"
+        }`}
+      >
+        <div className="px-4 pt-2 pb-6 space-y-2 flex flex-col">
+          
+          <Link 
+            to="/" 
+            onClick={closeMenu}
+            className={getMobileLinkClass('/')}
+          >
+            <Home size={18} />
+            Home
+          </Link>
+          
+          <Link 
+            to="/about" 
+            onClick={closeMenu}
+            className={getMobileLinkClass('/about')}
+          >
+            <Info size={18} />
+            About
+          </Link>
+
+          <div className="flex items-center justify-between px-3 py-3 mt-2 border-t border-border">
+             <span className="text-sm text-secondary font-medium">Appearance</span>
+             <button
+              onClick={toggleTheme}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-background border border-border text-primary hover:border-accent transition-all"
+            >
+              {themeName === 'light' ? (
+                <>
+                   <Moon size={16} /> <span>Dark Mode</span>
+                </>
+              ) : (
+                <>
+                   <Sun size={16} /> <span>Light Mode</span>
+                </>
+              )}
+            </button>
+          </div>
+
         </div>
       </div>
     </nav>

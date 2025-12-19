@@ -1,38 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Activity, Power } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext'; // Import context
+import { useTheme } from '../context/ThemeContext';
 
 export default function StreamVisualizer({ 
   audioRef, 
   isPlaying, 
   barCount = 64
 }) {
-  const { themeName } = useTheme(); // Get current theme name
+  // 👇 Destructure 'currentTheme' from the hook
+  const { themeName, currentTheme } = useTheme(); 
   
   const canvasRef = useRef(null);
   const [isEnabled, setIsEnabled] = useState(true); 
   const [isInitialized, setIsInitialized] = useState(false);
   
-  // Refs for Web Audio
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationIdRef = useRef(null);
 
-  // Ref to store current theme colors (defaults to orange/red)
   const colorsRef = useRef({ top: '#f97316', bottom: '#7f1d1d' });
 
-  // 1. UPDATE COLORS WHEN THEME CHANGES
+  // ✅ UPDATED EFFECT: Read directly from JS object
   useEffect(() => {
-    // Read the CSS variables set by ThemeProvider
-    const rootStyles = getComputedStyle(document.documentElement);
-    const top = rootStyles.getPropertyValue('--visualizer-top').trim();
-    const bottom = rootStyles.getPropertyValue('--visualizer-bottom').trim();
-    
-    // Update the ref (no re-render needed, draw loop picks it up instantly)
-    if (top && bottom) {
-      colorsRef.current = { top, bottom };
+    if (currentTheme) {
+      // Direct access - No DOM latency!
+      colorsRef.current = { 
+        top: currentTheme['--visualizer-top'], 
+        bottom: currentTheme['--visualizer-bottom'] 
+      };
     }
-  }, [themeName]);
+  }, [currentTheme]); // Run whenever the theme object updates
+
+  // ... (The rest of your code: initAudio, draw, etc. remains exactly the same) ...
 
   const initAudio = () => {
     if (isInitialized || !audioRef.current) return;
@@ -78,7 +77,6 @@ export default function StreamVisualizer({
       barHeight = (dataArray[i] / 255) * height; 
 
       const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height);
-      // 2. USE THE REF COLORS
       gradient.addColorStop(0, colorsRef.current.top);    
       gradient.addColorStop(1, colorsRef.current.bottom); 
 
