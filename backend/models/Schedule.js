@@ -1,7 +1,11 @@
 import mongoose from 'mongoose';
 
 const ScheduleSchema = new mongoose.Schema({
-  // What you see (IST)
+  // 1. Human-readable local time (for UI display)
+  localDate: {
+    type: String, // Format: "YYYY-MM-DD"
+    required: true,
+  },
   localHour: {
     type: Number,
     required: true,
@@ -14,20 +18,27 @@ const ScheduleSchema = new mongoose.Schema({
     min: 0,
     max: 59,
   },
-  // What the Scheduler uses (UTC)
-  utcHour: {
-    type: Number,
-    required: true, 
-  },
-  utcMinute: {
-    type: Number,
+
+  // 2. The actual execution timestamp (UTC)
+  // This replaces utcHour/utcMinute
+  scheduledTime: {
+    type: Date,
     required: true,
+    index: true // ⚡ Important for performance (we query this often)
   },
+
   filename: {
     type: String,
     required: true,
     trim: true,
   },
+
+  // 3. Status flag to ensure it plays only once
+  isPlayed: {
+    type: Boolean,
+    default: false,
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,

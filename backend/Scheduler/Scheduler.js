@@ -1,86 +1,87 @@
 import { Schedule } from '../models/Schedule.js'; 
 import { sendCommand } from '../commander/liquidsoapCommander.js'; 
 
-const POLLING_INTERVAL = 5000; // 5 seconds
-let processedSchedules = new Set(); 
+const POLLING_INTERVAL = 5000; 
 
 class LiquidsoapScheduler {
   constructor() {
     this.interval = null;
-    this.telnetConfig = {
-      host: "127.0.0.1",
-      port: 1234, 
-    };
-    console.log("Liquidsoap Scheduler initialized.");
+    this.telnetConfig = { host: "127.0.0.1", port: 1234 };
   }
 
   start() {
-    if (this.interval) {
-      console.warn("Scheduler is already running.");
-      return;
-    }
-    
+    if (this.interval) return;
     this.checkSchedules();
     this.interval = setInterval(() => this.checkSchedules(), POLLING_INTERVAL);
-    console.log(`Scheduler started, checking (UTC) every ${POLLING_INTERVAL / 1000} seconds.`);
+    console.log("📅 Date-aware Scheduler started.");
   }
 
   stop() {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
-      console.log("Scheduler stopped.");
     }
   }
 
   async checkSchedules() {
     const now = new Date();
-    
-    // 1. Get current SYSTEM time in UTC
-    const currentUTCHour = now.getUTCHours();
-    const currentUTCMinute = now.getUTCMinutes();
 
-    if (now.getSeconds() < 5) {
-        processedSchedules.clear();
-    }
-    
     try {
-      // 2. Query the DB using the stored UTC fields
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
       const schedulesToRun = await Schedule.find({
-        utcHour: currentUTCHour,     // Match DB UTC with System UTC
-        utcMinute: currentUTCMinute, 
+        scheduledTime: { 
+            $lte: now,
+            $gte: oneDayAgo 
+        },
+        isPlayed: false
       });
 
       for (const schedule of schedulesToRun) {
-        if (!processedSchedules.has(schedule._id.toString())) {
-          await this.executeSchedule(schedule);
-          processedSchedules.add(schedule._id.toString());
-        }
+        await this.executeSchedule(schedule);
       }
     } catch (error) {
       console.error("Scheduler Error:", error);
     }
   }
 
-
   async executeSchedule(schedule) {
-    const { hour, minute, filename } = schedule;
-    console.log(`\n*** MATCH FOUND (UTC): ${hour}:${minute} - ${filename} ***`);
+    const { localDate, localHour, localMinute, filename } = schedule;
+    
+    console.log(`\n▶️ ATTEMPTING: ${localDate} ${localHour}:${localMinute} - ${filename}`);
 
-    // Path logic (adjust if your scheduled files are in /radio/music or /radio/scheduled)
-    // If files are in /radio/scheduled, we use "../scheduled/"
+    // Note: No "/radio/" prefix because Liquidsoap config adds it.
+    // Quotes are handled by Liquidsoap config logic now.
     const relativePath = `scheduled/${filename}`;
-
-    // ⚠️ CRITICAL UPDATE: 
-    // 1. Use 'play_scheduled' to target the VIP/High-Priority queue.
-    // 2. Wrap the path in quotes to handle spaces safely.
+    
+    // We wrap relativePath in quotes here just to be safe for the telnet command syntax
     const command = `play_scheduled "${relativePath}"`; 
 
     try {
+      // 1. Send Command to Liquidsoap
       const response = await sendCommand(command, this.telnetConfig);
-      console.log(`Liquidsoap Response: ${response}`);
+      console.log(`   Liquidsoap Response: "${response}"`);
+
+      // 2. 🟢 VERIFICATION CHECK
+      // We check if the response indicates success. 
+      // Our Liquidsoap function returns strings starting with "Scheduled ..."
+      if (response && response.includes("Scheduled")) {
+          
+          // 3. Mark as Played ONLY if verified
+          schedule.isPlayed = true;
+          await schedule.save();
+          console.log("   ✅ Success: Verified by Liquidsoap & Marked as played in DB.");
+
+      } else {
+          // If response is weird or empty, do NOT mark as played.
+          // It will retry in the next loop (5 seconds later).
+          console.warn(`   ⚠️ Warning: Liquidsoap did not return a success message. Response: ${response}`);
+          console.warn("   ❌ Schedule NOT marked as played. Will retry.");
+      }
+
     } catch (error) {
-      console.error(`Failed to send command to Liquidsoap: ${error.message}`);
+      console.error(`   ❌ Failed to send command: ${error.message}`);
+      // Do not mark as played; allow retry
     }
   }
 }
