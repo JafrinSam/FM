@@ -16,7 +16,7 @@ schedule_queue = request.queue(id="schedule_queue")
 music_queue = request.queue(id="queue")
 auto_playlist = playlist(id="playlist", "/music", reload_mode="watch", mode="random")
 
-# Music Fallback: If one fails, try the next
+# Music Fallback
 music_source = fallback(
   track_sensitive=false, 
   [schedule_queue, music_queue, auto_playlist, blank(duration=0.5)]
@@ -27,24 +27,21 @@ server.register("music.vol", fun (v) -> begin vol_music := float_of_string(v) "D
 music_final = amplify({ vol_music() }, music_source)
 
 # ---------------------------------------------------------
-# 3. LIVE INGEST (UPDATED)
+# 3. LIVE INGEST
 # ---------------------------------------------------------
-# Connect to the local ingest stream
 live_raw = input.http("http://icecast:8000/live_feed", max_buffer=5.0)
 
-# 🚨 THE FIX: Detect Silence 🚨
-# threshold: Audio level in dB (anything lower is "silence")
-# max_blank: How many seconds of silence before we cut the stream?
+# Detect Silence (-40dB for 3 seconds)
 live_safe = strip_blank(max_blank=3.0, threshold=-40.0, live_raw)
 
 # ---------------------------------------------------------
-# 4. MAIN FALLBACK (UPDATED)
+# 4. MAIN FALLBACK
 # ---------------------------------------------------------
-# Now we use 'live_safe' instead of 'live_raw'
-# If 'live_safe' detects silence, it fails, and we fall back to 'music_final'
 radio = fallback(track_sensitive=false, [live_safe, music_final])
 
-# 5. METADATA
+# ---------------------------------------------------------
+# 5. METADATA (FIXED)
+# ---------------------------------------------------------
 current_title = ref("Station Idle")
 current_artist = ref("Station Offline")
 current_is_live = ref("false")
@@ -53,8 +50,20 @@ def update_metadata(m) =
   current_title := m["title"]
   current_artist := m["artist"]
   current_is_live := if m["is_live"] == "true" then "true" else "false" end
+  
+  # Capture the filename (defaults to empty string if missing)
+  current_filename = m["filename"]
 
-  j = json.stringify(m)
+  # 🟢 FIX: Use a list of tuples [("key", value)] for JSON
+  payload = [
+    ("title", !current_title),
+    ("artist", !current_artist),
+    ("is_live", !current_is_live),
+    ("filename", current_filename)
+  ]
+
+  j = json.stringify(payload)
+
   thread.run(fun () -> begin
       ignore(http.post("#{sidecar_url}/api/webhook/metadata", 
              headers=[("Content-Type","application/json")], 
