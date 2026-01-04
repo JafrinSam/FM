@@ -3,11 +3,6 @@
     <admin>admin@localhost</admin>
     <hostname>localhost</hostname>
 
-    <changeowner>
-        <user>icecast</user>
-        <group>icecast</group>
-    </changeowner>
-
     <limits>
         <clients>100</clients>
         <sources>10</sources>
@@ -28,22 +23,25 @@
 
     <listen-socket>
         <port>8000</port>
+        <bind-address>0.0.0.0</bind-address>
     </listen-socket>
 
     <mount>
         <mount-name>/radio.mp3</mount-name>
-        <public>1</public>
         <type>audio/mpeg</type>
+        <public>1</public>
+        <stream-name>BlazeUp Radio</stream-name>
+        <description>Live Radio</description>
     </mount>
 
     <fileserve>1</fileserve>
 
     <paths>
-        <basedir>/usr/share/icecast</basedir>
-        <logdir>/var/log/icecast</logdir>
-        <webroot>/usr/share/icecast/web</webroot>
-        <adminroot>/usr/share/icecast/admin</adminroot>
-        <pidfile>/usr/share/icecast/icecast.pid</pidfile>
+        <basedir>/usr/share/icecast2</basedir>
+        <logdir>/var/log/icecast2</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <pidfile>/usr/share/icecast2/icecast.pid</pidfile>
         <alias source="/" destination="/status.xsl"/>
     </paths>
 
@@ -58,5 +56,6 @@
         <header name="Access-Control-Allow-Origin" value="*" />
         <header name="Access-Control-Allow-Headers" value="Origin, Accept, X-Requested-With, Content-Type, Icy-MetaData" />
         <header name="Access-Control-Allow-Methods" value="GET, OPTIONS, HEAD" />
+        <header name="Access-Control-Expose-Headers" value="Server,Ice-Audio-Info,Icy-Br,Icy-Description,Icy-Genre,Icy-Name,Icy-Pub,Icy-Url,Icy-MetaData" />
     </http-headers>
 </icecast>

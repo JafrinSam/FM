@@ -43,13 +43,19 @@ services:
   # -------------------------------
   # 3. Icecast (Distribution)
   # -------------------------------
+# -------------------------------
+  # 3. Icecast (Distribution)
+  # -------------------------------
   icecast:
-    image: infiniteproject/icecast
+    image: moul/icecast
     container_name: icecast
-    user: icecast 
     ports:
       - "8000:8000"
-
+    environment:
+      - ICECAST_SOURCE_PASSWORD=hackme
+      - ICECAST_ADMIN_PASSWORD=hackme
+      - ICECAST_PASSWORD=hackme
+      - ICECAST_RELAY_PASSWORD=hackme
     volumes:
-      # Mount our custom config with CORS headers
-      - ./icecast/icecast.xml:/etc/icecast.xml
+      # Mount our custom config
+      - ./icecast:/etc/icecast2

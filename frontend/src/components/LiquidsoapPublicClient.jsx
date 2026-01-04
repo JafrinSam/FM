@@ -141,18 +141,20 @@ export default function LiquidsoapPublicClient() {
             {/* 2. AUDIO PLAYER (Bottom)
             */}
             <div className="w-full max-w-md bg-surface p-4 rounded-b-2xl rounded-t-md shadow-inner border border-border z-10">
-                <audio
-                    ref={audioRef}  
-                    controls
-                    src={STREAM_URL}
-                    crossOrigin="anonymous" // REQUIRED
-                    preload="none"
-                    className="w-full h-10 accent-accent"
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                >
-                    Your browser does not support the audio element.
-                </audio>
+              <audio
+                  ref={audioRef}  
+                  controls
+                  src={STREAM_URL}
+                  crossOrigin="anonymous" // <--- This MUST match the headers above
+                  preload="auto"
+                  className="w-full h-10 accent-accent"
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  // Add this to handle stream errors gracefully
+                  onError={(e) => console.error("Audio Error:", e.target.error)}
+              >
+                  Your browser does not support the audio element.
+              </audio>
             </div>
             
             <p className="text-xs text-secondary mt-4 flex items-center gap-1 opacity-70">

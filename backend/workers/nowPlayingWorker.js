@@ -43,79 +43,39 @@ async function startWorker() {
   }
 }
 
+
 async function checkNowPlaying() {
-  if (!isConnected) return;
-
   try {
-    const rawResponse = await sendCommand("get_filename", TELNET_CONFIG);
+    // 1. Get the new formatted string from Liquidsoap
+    const rawResponse = await sendCommand("get_status", TELNET_CONFIG);
+    const cleanResponse = rawResponse ? rawResponse.replace(/[\r\n]*END$/, "").trim() : "";
 
-    let filename = rawResponse
-      ? rawResponse.replace(/[\r\n]*END$/, "").trim()
-      : "";
+    if (!cleanResponse || cleanResponse === lastRawString) return;
 
-    // --- Dead air ---
-    if (!filename || filename === "No file playing") {
-      if (lastFilename !== "IDLE") {
-        lastFilename = "IDLE";
-        parentPort.postMessage({ type: 'UPDATE_TRACK', data: null });
-      }
-      return;
-    }
+    // 2. Parse "Title|Artist|IsLive"
+    const parts = cleanResponse.split("|");
+    const title = parts[0] || "Station Idle";
+    const artist = parts[1] || "";
+    const isLiveStr = parts[2] || "false";
 
-    // ✅ ALWAYS work with basename
-    const cleanFilename = path.basename(filename);
+    console.log(`[Worker] 🎵 Update: ${title} (${isLiveStr === "true" ? "LIVE" : "Track"})`);
 
-    if (cleanFilename === lastFilename) return;
+    // 3. Build the object
+    const trackDetails = {
+      title: title,
+      artist: artist,
+      // 🟢 CRITICAL: This allows the frontend to show the GREEN "ON AIR" button
+      type: isLiveStr === "true" ? "Live" : "Track", 
+      art: null // You can fetch DB art here if it's a track
+    };
 
-    console.log(`[Worker] 🎵 Track changed: ${cleanFilename}`);
-
-    let trackDetails;
-
-    try {
-
-      const asset = await MusicAsset.findOne({ filename: cleanFilename }).lean();
-      //console.log("asset:",asset)
-
-      if (asset) {
-        const finalTitle =
-          asset.title && asset.title !== "Untitled Track"
-            ? asset.title
-            : cleanDisplayTitle(cleanFilename);
-
-        trackDetails = {
-          title: finalTitle,
-          artist:
-            asset.artist && asset.artist !== "Unknown"
-              ? asset.artist
-              : "BlazeUp Radio",
-          album: "BlazeUp Radio",
-          duration: asset.duration || 0,
-          type: asset.type || "Music",
-        };
-      } else {
-        // --- Fallback ---
-        trackDetails = {
-          title: cleanDisplayTitle(cleanFilename),
-          artist: "BlazeUp Radio",
-          type: "Music",
-        };
-      }
-    } catch (dbErr) {
-      console.error("[Worker] DB Error:", dbErr.message);
-      trackDetails = {
-        title: cleanDisplayTitle(cleanFilename),
-        artist: "BlazeUp Radio",
-        type: "Music",
-      };
-    }
-
+    // 4. Send to Main Thread
     parentPort.postMessage({ type: 'UPDATE_TRACK', data: trackDetails });
-    lastFilename = cleanFilename;
+    lastRawString = cleanResponse;
 
   } catch (error) {
     console.error("[Worker] Polling Error:", error.message);
   }
 }
-
 
 startWorker();
