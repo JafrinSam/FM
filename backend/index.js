@@ -2,7 +2,7 @@ import express from "express"
 import dotenv from "dotenv";
 import cors from "cors"
 import http from 'http';
-import { Worker } from 'worker_threads'; 
+import amqp from 'amqplib'; // 📦 New: RabbitMQ Library
 import { initWebSocket, broadcastToClients } from './utils/websocket.js';
 dotenv.config()
 
@@ -12,66 +12,116 @@ import api from "./routes/index.js"
 
 const app = express();
 const server = http.createServer(app);
-app.use(express.json());
 
-// 1. Initialize WebSockets on the HTTP server
+// Middleware
+app.use(express.json()); // Essential for parsing Liquidsoap JSON
+app.use(cors());
+
+// 1. Initialize WebSockets
 initWebSocket(server);
 
-const PORT = process.env.PORT || 3000; // Good practice to have a fallback
+const PORT = process.env.PORT || 3000;
+const RABBIT_URL = process.env.RABBITMQ_URL || 'amqp://localhost';
+
+// Global Cache for "Now Playing"
+let currentTrackCache = { title: "Station Idle", artist: "Offline" };
+let rabbitChannel = null;
 
 // =========================================================
-// 💡 FIX 1: Declare the variable globally here
+// 🐰 RABBITMQ CONNECTION (Producer)
 // =========================================================
-let currentTrackCache = { title: "Offline", artist: "Radio Station" };
-
-// 3. Start the Worker Thread
-function startNowPlayingWorker() {
-  const worker = new Worker('./workers/nowPlayingWorker.js');
-
-  worker.on('message', (message) => {
-    if (message.type === 'UPDATE_TRACK') {
-      const trackData = message.data || { title: "Offline", artist: "Radio Station" };
-      
-      // Now this variable exists!
-      currentTrackCache = trackData;
-      
-      console.log(`📡 Broadcasting update: ${trackData.title}`);
-      broadcastToClients("NOW_PLAYING", trackData);
-    }
-  });
-
-  worker.on('error', (err) => console.error('Worker Error:', err));
-  worker.on('exit', (code) => {
-    if (code !== 0) console.error(`Worker stopped with exit code ${code}`);
-  });
+async function connectRabbit() {
+  try {
+    const connection = await amqp.connect(RABBIT_URL);
+    rabbitChannel = await connection.createChannel();
+    await rabbitChannel.assertQueue('radio_metadata');
+    console.log("🐰 Connected to RabbitMQ");
+    
+    // Handle connection close
+    connection.on("close", () => {
+      console.error("🐰 RabbitMQ connection closed. Retrying...");
+      setTimeout(connectRabbit, 5000);
+    });
+  } catch (error) {
+    console.error("🐰 RabbitMQ Connection Failed:", error.message);
+    console.log("Retrying in 5 seconds...");
+    setTimeout(connectRabbit, 5000);
+  }
 }
 
+// =========================================================
+// 🎵 LIQUIDSOAP WEBHOOK (Replaces the Worker Thread)
+// =========================================================
+// Liquidsoap calls this endpoint via http.post()
+app.post('/api/webhook/metadata', (req, res) => {
+  try {
+    const meta = req.body;
+    
+    // 1. Normalize Data (Liquidsoap sends everything as strings)
+    const trackData = {
+      title: meta.title || "Unknown Title",
+      artist: meta.artist || "Unknown Artist",
+      is_live: meta.is_live === "true", // Convert string "true" to boolean
+      cover: meta.cover || "",
+      timestamp: new Date()
+    };
+
+    console.log(`📡 New Track: ${trackData.title} - ${trackData.artist}`);
+
+    // 2. Update Global Cache (for new API calls)
+    currentTrackCache = trackData;
+
+    // 3. Broadcast to Frontend (WebSockets)
+    broadcastToClients("NOW_PLAYING", trackData);
+
+    // 4. Publish to RabbitMQ (For other services/workers)
+    if (rabbitChannel) {
+      rabbitChannel.sendToQueue(
+        'radio_metadata', 
+        Buffer.from(JSON.stringify(trackData))
+      );
+    }
+
+    // 5. Reply fast so Liquidsoap doesn't lag
+    res.status(200).send("OK");
+    
+  } catch (error) {
+    console.error("Webhook Error:", error);
+    res.status(500).send("Error processing metadata");
+  }
+});
+
+
+// =========================================================
+// 🚀 INITIALIZATION
+// =========================================================
 async function initializeApp() {
   try {
     await connectDB(); 
+    
+    // Start Internal Scheduler (For your DB playlist generation)
     scheduler.start(); 
 
-    app.use(cors());
+    // Start RabbitMQ
+    connectRabbit();
 
-    startNowPlayingWorker();
+    // ❌ REMOVED: startNowPlayingWorker() 
+    // We don't need to poll anymore. The Push API above handles it.
 
-    // 4. REST API for initial load
+    // Public API for fetching current state (Initial Load)
     app.get('/api/now-playing', (req, res) => {
       res.json(currentTrackCache);
     });
 
+    // Mount other routes
     app.use('/api', api);
     
-    // =========================================================
-    // 💡 FIX 2: Use server.listen, NOT app.listen
-    // (Required for WebSockets to work on the same port)
-    // =========================================================
     server.listen(PORT, () => {
-      console.log(`🌐 API Server & WebSockets running on http://localhost:${PORT}`);
+      console.log(`🌐 API Server, WebSockets & Webhook listening on port ${PORT}`);
     });
     
   } catch (error) {
-    console.error('Application failed to start during initialization:', error);
+    console.error('Application failed to start:', error);
     process.exit(1);
   }
 }
