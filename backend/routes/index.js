@@ -6,6 +6,7 @@ import queue from "./queueRouter.js"
 import file from "./fileRoute.js"
 import serviceStaus from "./statusRoutes.js"
 import mixer from './mixerRoutes.js'
+import webHook from './webHookRoute.js'
 
 
 router.use('/schedules',Schedule);
@@ -14,5 +15,6 @@ router.use('/queue',queue);
 router.use("/file",file)
 router.use('/status',serviceStaus)
 router.use("/mixer",mixer)
+router.use("/webhook",webHook)
 
 export default router

@@ -1,5 +1,5 @@
 #!/usr/bin/liquidsoap
-# PLAYOUT.LIQ - Handles Music, Scheduling, and Final Output
+# PLAYOUT.LIQ - Stability Version
 
 # 1. SETTINGS
 settings.log.stdout := true
@@ -11,36 +11,87 @@ settings.frame.duration := 0.04
 icecast_pass = environment.get("ICECAST_PASS")
 sidecar_url = environment.get("SIDECAR_URL")
 
-# 2. MUSIC QUEUES
-schedule_queue = request.queue(id="schedule_queue")
-music_queue = request.queue(id="queue")
-auto_playlist = playlist(id="playlist", "/music", reload_mode="watch", mode="random")
+# ---------------------------------------------------------
+# 2. DEFINITIONS (Raw Sources)
+# ---------------------------------------------------------
+# Raw queues for commands
+q_schedule_raw = request.queue(id="schedule_queue") 
+q_music_raw = request.queue(id="queue")             
 
-# Music Fallback
-music_source = fallback(
-  track_sensitive=false, 
-  [schedule_queue, music_queue, auto_playlist, blank(duration=0.5)]
+def get_next_song() = 
+  log("Fetching next song from API...")
+  default_json = [("filename","")]
+  try
+    response_body = http.get("#{sidecar_url}/api/webhook/next-song")
+    data = json.parse(default=default_json, response_body)
+    fname = list.assoc(default="", "filename", data)
+    
+    if fname != "" then
+      log("Next song received: #{fname}")
+      request.create("file:///#{fname}")
+    else
+      log("API returned empty filename.")
+      null
+    end
+  catch _ do
+    log("API Request Failed (Server offline or 404).")
+    null
+  end
+end
+
+# ---------------------------------------------------------
+# 3. AUDIO PROCESSING
+# ---------------------------------------------------------
+
+# Wrap sources to normalize audio channels
+s_schedule = audio_to_stereo(q_schedule_raw)
+s_music = audio_to_stereo(q_music_raw)
+s_dynamic = audio_to_stereo(request.dynamic(id="dynamic_next", get_next_song))
+s_failsafe = audio_to_stereo(playlist(id="failsafe", "/music", mode="random"))
+
+# LAYER 1: ROTATION (The Music Mix)
+# We pick the source here without transitions (simple switch)
+rotation_raw = fallback(
+  track_sensitive=true, 
+  [
+    s_music,       
+    s_dynamic,      
+    s_failsafe
+  ]
 )
 
+# LAYER 2: SMOOTHING
+# We apply the crossfade to the RESULT of the rotation.
+# This ensures all music transitions are smooth (3s overlap)
+rotation_safe = crossfade(duration=3.0, rotation_raw)
+
+# LAYER 3: PRIORITY INTERRUPT
+# The Schedule cuts in immediately over the rotation.
+# We REMOVE transitions here to prevent the "Error 5" Type Mismatch.
+music_source = fallback(
+  track_sensitive=false,
+  [
+    s_schedule,    # Priority (Hard cut in)
+    rotation_safe  # Background Rotation (Smooth faded)
+  ]
+)
+
+# Volume Control
 vol_music = ref(1.0)
 server.register("music.vol", fun (v) -> begin vol_music := float_of_string(v) "Done" end)
 music_final = amplify({ vol_music() }, music_source)
 
 # ---------------------------------------------------------
-# 3. LIVE INGEST
+# 4. LIVE INGEST & FINAL MIX
 # ---------------------------------------------------------
 live_raw = input.http("http://icecast:8000/live_feed", max_buffer=5.0)
+live_safe = blank.strip(max_blank=3.0, threshold=-40.0, live_raw)
 
-# Detect Silence (-40dB for 3 seconds)
-live_safe = strip_blank(max_blank=3.0, threshold=-40.0, live_raw)
-
-# ---------------------------------------------------------
-# 4. MAIN FALLBACK
-# ---------------------------------------------------------
-radio = fallback(track_sensitive=false, [live_safe, music_final])
+# Final Fallback (Live interrupts Music)
+radio = mksafe(fallback(track_sensitive=false, [live_safe, music_final]))
 
 # ---------------------------------------------------------
-# 5. METADATA (FIXED)
+# 5. METADATA HANDLING
 # ---------------------------------------------------------
 current_title = ref("Station Idle")
 current_artist = ref("Station Offline")
@@ -51,64 +102,58 @@ def update_metadata(m) =
   current_artist := m["artist"]
   current_is_live := if m["is_live"] == "true" then "true" else "false" end
   
-  # Capture the filename (defaults to empty string if missing)
-  current_filename = m["filename"]
+  fn_raw = if m["filename"] != "" then m["filename"] else m["initial_uri"] end
+  fn = string.replace(pattern="^file://", (fun (_) -> ""), fn_raw)
 
-  # 🟢 FIX: Use a list of tuples [("key", value)] for JSON
+  print(">>> METADATA: Title=#{current_title()}, Filename=#{fn}")
+
   payload = [
-    ("title", !current_title),
-    ("artist", !current_artist),
-    ("is_live", !current_is_live),
-    ("filename", current_filename)
+    ("title", current_title()),
+    ("artist", current_artist()),
+    ("is_live", current_is_live()),
+    ("filename", fn)
   ]
 
   j = json.stringify(payload)
 
   thread.run(fun () -> begin
-      ignore(http.post("#{sidecar_url}/api/webhook/metadata", 
-             headers=[("Content-Type","application/json")], 
-             data=j))
+      try 
+        ignore(http.post("#{sidecar_url}/api/webhook/metadata", 
+               headers=[("Content-Type","application/json")], 
+               data=j))
+      catch _ do
+         log("Failed to send metadata webhook")
+      end
   end)
 end
 
 radio.on_metadata(synchronous=false, update_metadata)
-
 server.register("get_status", fun (_) -> "#{current_title()}|#{current_artist()}|#{current_is_live()}")
 
-# 6. SCHEDULER
-scheduled = ref({ hour = -1, minute = -1, file = "", done = true })
+# ---------------------------------------------------------
+# 6. COMMANDS
+# ---------------------------------------------------------
+server.register("play_scheduled", fun (path) -> begin
+  clean_path = string.trim(path)
+  uri = "file:///music/#{clean_path}"
+  log("🚨 SCHEDULER: Pushing Priority Track: #{uri}")
+  q_schedule_raw.push.uri(uri)
+  "Scheduled #{clean_path}"
+end)
 
-def scheduler_tick() =
-  now = time.utc()
-  s = scheduled()
-  if not s.done and now.hour == s.hour and now.min == s.minute then
-    log(label="scheduler", "Executing #{s.file}")
-    schedule_queue.push.uri("file:///music/#{s.file}")
-    scheduled := { hour = s.hour, minute = s.minute, file = s.file, done = true }
-  end
-end
-thread.run(every={1.}, fun () -> scheduler_tick())
+server.register("play_song", fun (name) -> begin 
+  q_music_raw.push.uri("file:///music/#{name}") 
+  "Queued #{name}" 
+end)
 
-# Scheduler Commands
-def set_schedule_cmd(args) =
-  parts = string.split(separator=" ", args)
-  if list.length(parts) != 3 then "Usage: set_schedule <HH> <MM> <filename>" else
-    h = int_of_string(list.nth(parts, 0))
-    m = int_of_string(list.nth(parts, 1))
-    f = list.nth(parts, 2)
-    scheduled := { hour=h, minute=m, file=f, done=false }
-    "Scheduled #{f} at #{h}:#{m}"
-  end
-end
-server.register("set_schedule", set_schedule_cmd)
-server.register("cancel_schedule", fun (_) -> begin scheduled := { hour=-1, minute=-1, file="", done=true } "Cancelled" end)
-server.register("schedule_status", fun (_) -> if (scheduled()).done then "IDLE" else "PENDING" end)
+server.register("next_song", fun (_) -> begin 
+  q_music_raw.skip() 
+  "Skipped" 
+end)
 
-# 7. UTILITY COMMANDS
-server.register("play_song", fun (name) -> begin music_queue.push.uri("file:///music/#{name}") "Queued #{name}" end)
-server.register("next_song", fun (_) -> begin music_queue.skip() "Skipped" end)
-
-# 8. FINAL OUTPUT
+# ---------------------------------------------------------
+# 7. OUTPUT
+# ---------------------------------------------------------
 output.icecast(
   %mp3(bitrate=192), 
   host="icecast", 

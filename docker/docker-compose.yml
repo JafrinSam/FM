@@ -76,7 +76,7 @@ services:
       SIDECAR_URL: "http://host.docker.internal:5000"
     volumes:
       - ./liquidsoap/config/playout.liq:/script/playout.liq:ro
-      - ../backend/radio/:/music/:ro # Mount your music here
+      - ../backend/radio/:/radio/:ro # Mount your music here
     command: ["liquidsoap", "/script/playout.liq"]
 
 

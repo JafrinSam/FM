@@ -5,7 +5,7 @@ import {
   Route 
 } from 'react-router-dom';
 
-// 💡 Import the Theme Provider
+//💡 Import the Theme Provider
 import { ThemeProvider } from './context/ThemeContext';
 
 // Layouts
@@ -21,6 +21,8 @@ import SchedulerView from './pages/SchedulerView';
 import MusicManagerView from './pages/MusicManagerView'
 import AboutView from './pages/AboutView';
 import QueueManager from './pages/QueueManager'
+import Home from './pages/Home';
+import Live from './pages/Live';
 //import CommanderView from './pages/CommanderView'; 
 
 // Placeholders
@@ -54,8 +56,8 @@ function App() {
           {/* ======================= 1. PUBLIC ROUTES (ClientLayout) ======================= */}
           <Route path="/" element={<ClientLayout />}>
             {/* Main public listening page */}
-            <Route index element={<LiquidsoapPublicClient />} /> 
-
+            <Route index element={<Home/>} /> 
+            <Route path="live" element={<Live/>} />
             <Route path="about" element={<AboutView/>} />
             
             {/* Note: You had a duplicate 'about' route here. I removed the placeholder one. */}

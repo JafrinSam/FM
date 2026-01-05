@@ -1,28 +1,26 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom'; // 1. Import useLocation
+import { Link, useLocation } from 'react-router-dom'; 
 import { useTheme } from '../context/ThemeContext';
-import { Sun, Moon, Home, Info, Radio, Menu, X } from 'lucide-react';
+import { Sun, Moon, Home, Info, Radio, Menu, X, PlayCircle } from 'lucide-react';
 
 export default function ClientNavbar() {
   const { themeName, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
-  const location = useLocation(); // 2. Get current location
+  const location = useLocation(); 
 
   const closeMenu = () => setIsOpen(false);
 
-  // 3. Helper function to determine active state styles
+  // Helper function to determine active state styles
   const getLinkClass = (path) => {
     const isActive = location.pathname === path;
     const baseClass = "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all group";
     
-    // If active: Accent color + subtle background
-    // If inactive: Secondary color + hover effects
     return isActive 
       ? `${baseClass} text-accent bg-accent/10 font-bold shadow-sm` 
       : `${baseClass} text-secondary hover:text-accent hover:bg-background`;
   };
 
-  // Mobile specific class helper (larger padding/text)
+  // Mobile specific class helper
   const getMobileLinkClass = (path) => {
     const isActive = location.pathname === path;
     const baseClass = "flex items-center gap-3 px-3 py-3 rounded-md text-base font-medium transition-colors";
@@ -49,7 +47,8 @@ export default function ClientNavbar() {
                 >
                     <source src="/logo/logo.webm" type="video/webm" />
                     <source src="/logo/logo.mov" type="video/quicktime" />
-                    <img src="/images/fallback-logo.png" alt="BlazeUp" /> 
+                    {/* Fallback Image if video fails */}
+                    <img src="/logo/logo.png" alt="BlazeUp" className="w-full h-full object-contain" /> 
                 </video>
             </div>
             
@@ -64,21 +63,29 @@ export default function ClientNavbar() {
           </Link>
 
           {/* --- DESKTOP NAVIGATION --- */}
-          <div className="hidden md:flex items-center space-x-4">
+          <div className="hidden md:flex items-center space-x-2">
             <Link to="/" className={getLinkClass('/')}>
-              <Home size={16} className={location.pathname === '/' ? "text-accent" : "group-hover:text-accent transition-colors"} />
+              <Home size={18} className={location.pathname === '/' ? "text-accent" : "group-hover:text-accent transition-colors"} />
               Home
+            </Link>
+
+            {/* 🟢 NEW: Live Link */}
+            <Link to="/live" className={getLinkClass('/live')}>
+              <Radio size={18} className={location.pathname === '/live' ? "text-accent" : "group-hover:text-accent transition-colors"} />
+              Live Stream
             </Link>
             
             <Link to="/about" className={getLinkClass('/about')}>
-              <Info size={16} className={location.pathname === '/about' ? "text-accent" : "group-hover:text-accent transition-colors"} />
+              <Info size={18} className={location.pathname === '/about' ? "text-accent" : "group-hover:text-accent transition-colors"} />
               About
             </Link>
 
-            {/* Listen Badge */}
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-xs font-bold animate-pulse cursor-default">
-                <Radio size={14} />
-                <span>LIVE</span>
+            <div className="w-px h-6 bg-border mx-2"></div>
+
+            {/* Listen Badge (Visual Only) */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold animate-pulse cursor-default select-none">
+                <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                <span>ON AIR</span>
             </div>
 
             {/* Theme Toggle */}
@@ -93,9 +100,10 @@ export default function ClientNavbar() {
 
           {/* --- MOBILE CONTROLS --- */}
           <div className="flex md:hidden items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent text-[10px] font-bold animate-pulse">
-                <Radio size={12} />
-                <span>LIVE</span>
+            {/* Mobile On-Air Badge */}
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                <span>ON AIR</span>
             </div>
 
             <button
@@ -123,6 +131,16 @@ export default function ClientNavbar() {
           >
             <Home size={18} />
             Home
+          </Link>
+
+          {/* 🟢 NEW: Mobile Live Link */}
+          <Link 
+            to="/live" 
+            onClick={closeMenu}
+            className={getMobileLinkClass('/live')}
+          >
+            <Radio size={18} />
+            Live Stream
           </Link>
           
           <Link 
