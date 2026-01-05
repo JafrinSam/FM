@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import ClientNavbar from '../components/ClientNavbar'; // 💡 Import new navbar
-import Footer from '../components/Footer';
+import Footer from '../components/client/Footer';
 
 export default function ClientLayout() {
   return (
