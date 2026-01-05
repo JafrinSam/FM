@@ -13,32 +13,6 @@ services:
     volumes:
       - ./srs/srs.conf:/usr/local/srs/conf/srs.conf
 
-  # -------------------------------
-  # 2. Liquidsoap (Mixer + Control)
-  # -------------------------------
-  liquidsoap:
-    image: savonet/liquidsoap:rolling-release-v2.4.x
-    container_name: liquidsoap
-    depends_on:
-      - srs
-      - icecast
-    ports:
-      - "1234:1234" # Telnet Port
-    environment:
-      ICECAST_SOURCE_PASSWORD: hackme
-    volumes:
-      # 1. Mount the configuration script
-      - ./liquidsoap/config/radio.liq:/radio/radio.liq:ro
-      
-      # 2. 💡 CRITICAL: Mount the SAME music folder your backend uploads to.
-      # Ensure this path matches where your Node.js 'backend' folder is relative to this file.
-      - ../backend/radio/:/radio/
-      
-      # 3. (Optional) Mount playlists folder if you use it
-      - ./liquidsoap/playlists:/radio/playlists
-    
-
-    command: ["liquidsoap", "/radio/radio.liq"]
 
   # -------------------------------
   # 3. Icecast (Distribution)
@@ -59,3 +33,76 @@ services:
     volumes:
       # Mount our custom config
       - ./icecast:/etc/icecast2
+
+  # 3. Message Queue (RabbitMQ)
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports: 
+      - "5672:5672"   # AMQP protocol
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+
+
+  # 5. Liquidsoap INGEST (Handles "Dirty" Live Inputs)
+  ls-ingest:
+    image: savonet/liquidsoap:rolling-release-v2.4.x
+    container_name: ls-ingest
+    depends_on: [srs, icecast]
+    ports:
+      - "1235:1235" # 👈 Maps to Ingest Telnet
+    environment:
+      ICECAST_PASS: hackme
+    volumes:
+      - ./liquidsoap/config/ingest.liq:/script/ingest.liq:ro
+    command: ["liquidsoap", "/script/ingest.liq"]
+
+  # 6. Liquidsoap PLAYOUT (The "Clean" Master Output)
+  ls-playout:
+    image: savonet/liquidsoap:rolling-release-v2.4.x
+    container_name: ls-playout
+    depends_on: [icecast]
+    ports: ["1234:1234"] # Telnet only on the Master
+ 
+  # 🚨 KEY FIX FOR BARE METAL NODE.JS 🚨
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    
+    environment:
+      ICECAST_PASS: hackme
+      # Point to the host machine using the mapped hostname
+      SIDECAR_URL: "http://host.docker.internal:5000"
+    volumes:
+      - ./liquidsoap/config/playout.liq:/script/playout.liq:ro
+      - ../backend/radio/:/radio/:ro # Mount your music here
+    command: ["liquidsoap", "/script/playout.liq"]
+
+
+  # -------------------------------
+  # 2. Liquidsoap (Mixer + Control)
+  # -------------------------------
+#  liquidsoap:
+#    image: savonet/liquidsoap:rolling-release-v2.4.x
+#    container_name: liquidsoap
+#    depends_on:
+#      - srs
+#      - icecast
+#    ports:
+#      - "1234:1234" # Telnet Port
+#    environment:
+#      ICECAST_SOURCE_PASSWORD: hackme
+#    volumes:
+#      # 1. Mount the configuration script
+#      - ./liquidsoap/config/radio.liq:/radio/radio.liq:ro
+#      
+#      # 2. 💡 CRITICAL: Mount the SAME music folder your backend uploads to.
+#      # Ensure this path matches where your Node.js 'backend' folder is relative to this file.
+#      - ../backend/radio/:/radio/
+#      
+#      # 3. (Optional) Mount playlists folder if you use it
+#      - ./liquidsoap/playlists:/radio/playlists
+#    
+#
+#    command: ["liquidsoap", "/radio/radio.liq"]
