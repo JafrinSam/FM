@@ -1,0 +1,59 @@
+{
+  "kind": "collectionType",
+  "collectionName": "shows",
+  "info": {
+    "singularName": "show",
+    "pluralName": "shows",
+    "displayName": "Show"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "Title": {
+      "type": "string",
+      "required": true
+    },
+    "Tagline": {
+      "type": "string",
+      "required": true
+    },
+    "Description": {
+      "type": "richtext",
+      "required": true
+    },
+    "CoverImage": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "IsLive": {
+      "type": "boolean",
+      "default": false
+    },
+    "rjs": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::rj.rj",
+      "mappedBy": "show"
+    },
+    "GuestName": {
+      "type": "string"
+    },
+    "weekly_schedules": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::weekly-schedule.weekly-schedule",
+      "mappedBy": "show"
+    },
+    "hit": {
+      "type": "boolean",
+      "required": false,
+      "default": false
+    }
+  }
+}

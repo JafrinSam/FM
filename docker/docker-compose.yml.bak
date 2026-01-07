@@ -1,0 +1,98 @@
+services:
+  # -------------------------------
+  # 1. AZURACAST WEB (The Brain & API)
+  # -------------------------------
+  web:
+    image: ghcr.io/azuracast/azuracast_web:stable
+    container_name: azuracast_web
+    depends_on:
+      - mariadb
+      - influxdb
+      - redis
+    env_file: .env
+    environment:
+      LANG: "en_US.UTF-8"
+      AZURACAST_DC_REVISION: 1
+    volumes:
+      - ./azuracast_station_data:/var/azuracast/stations
+      -  azuracast_db_data:/var/lib/mysql
+      - ./azuracast/www:/var/azuracast/www
+      - ./azuracast/backups:/var/azuracast/backups
+    ports:
+      - "80:80"      # HTTP (AzuraCast Admin Panel)
+      - "443:443"    # HTTPS
+      - "2022:2022"  # SFTP Port
+    # Radio Ports Range (For incoming streams & broadcasting)
+    # You might need to expand this range if you have many stations
+    
+      - "8000:8000"
+      - "8005:8005"
+      - "8006:8006"
+    networks:
+      - radio_network
+
+  # -------------------------------
+  # 2. AZURACAST DATABASE (MariaDB)
+  # -------------------------------
+  mariadb:
+    image: mariadb:10.6
+    container_name: azuracast_db
+    command: ['mysqld', '--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+    volumes:
+      - azuracast_db_data:/var/lib/mysql
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: azuracast
+      MYSQL_USER: azuracast
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    networks:
+      - radio_network
+
+  # -------------------------------
+  # 3. AZURACAST METRICS (InfluxDB)
+  # -------------------------------
+  influxdb:
+    image: influxdb:1.8
+    container_name: azuracast_influxdb
+    volumes:
+      - azuracast_influx_data:/var/lib/influxdb
+    networks:
+      - radio_network
+
+  # -------------------------------
+  # 4. AZURACAST CACHE (Redis)
+  # -------------------------------
+  redis:
+    image: redis:7.0-alpine
+    container_name: azuracast_redis
+    volumes:
+      - azuracast_redis_data:/data
+    networks:
+      - radio_network
+
+  # -------------------------------
+  # 5. SRS (WebRTC → RTMP) - KEPT FROM YOUR ORIGINAL
+  # -------------------------------
+  srs:
+    image: ossrs/srs:5
+    container_name: srs
+    ports:
+      - "1935:1935" # RTMP
+      - "1985:1985" # API
+      - "8080:8080" # FLV
+      - "8000:8000/udp" # WebRTC
+    volumes:
+      - ./srs/srs.conf:/usr/local/srs/conf/srs.conf
+    networks:
+      - radio_network
+
+volumes:
+  azuracast_db_data:
+  azuracast_influx_data:
+  azuracast_redis_data:
+  azuracast_station_data:
+
+networks:
+  radio_network:
+    driver: bridge

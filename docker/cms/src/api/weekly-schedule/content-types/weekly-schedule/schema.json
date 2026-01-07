@@ -1,0 +1,42 @@
+{
+  "kind": "collectionType",
+  "collectionName": "weekly_schedules",
+  "info": {
+    "singularName": "weekly-schedule",
+    "pluralName": "weekly-schedules",
+    "displayName": "Weekly Schedule"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "startTime": {
+      "type": "time",
+      "required": true
+    },
+    "endTime": {
+      "type": "time",
+      "required": true
+    },
+    "day": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+      ]
+    },
+    "show": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::show.show",
+      "inversedBy": "weekly_schedules"
+    }
+  }
+}

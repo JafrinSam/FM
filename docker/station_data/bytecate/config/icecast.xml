@@ -1,0 +1,56 @@
+<icecast>
+    <location>AzuraCast</location>
+    <admin>icemaster@localhost</admin>
+    <hostname>localhost</hostname>
+    <limits>
+        <clients>2500</clients>
+        <max-listeners>-1</max-listeners>
+        <sources>1</sources>
+        <queue-size>524288</queue-size>
+        <client-timeout>30</client-timeout>
+        <header-timeout>15</header-timeout>
+        <source-timeout>10</source-timeout>
+        <burst-size>65535</burst-size>
+    </limits>
+    <authentication>
+        <source-password>YnQLNTLT</source-password>
+        <relay-password>pY3LgHky</relay-password>
+        <admin-user>admin</admin-user>
+        <admin-password>4fXwyAWC</admin-password>
+    </authentication>
+    <listen-socket>
+        <port>8000</port>
+    </listen-socket>
+    <mount type="normal">
+        <mount-name>/radio.mp3</mount-name>
+        <charset>UTF8</charset>
+        <stream-name>bytecast</stream-name>
+        <listenurl>/listen/bytecate/radio.mp3</listenurl>
+        <fallback-mount>/fallback-[192].mp3</fallback-mount>
+        <fallback-override>1</fallback-override>
+    </mount>
+    <fileserve>1</fileserve>
+    <paths>
+        <basedir>/usr/local/share/icecast</basedir>
+        <logdir>/var/azuracast/stations/bytecate/config</logdir>
+        <webroot>/usr/local/share/icecast/web</webroot>
+        <adminroot>/usr/local/share/icecast/admin</adminroot>
+        <pidfile>/var/azuracast/stations/bytecate/config/icecast.pid</pidfile>
+        <alias source="/" dest="/status.xsl"/>
+        <ssl-private-key>/var/azuracast/storage/acme/ssl.key</ssl-private-key>
+        <ssl-certificate>/var/azuracast/storage/acme/ssl.crt</ssl-certificate>
+        <ssl-allowed-ciphers>ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS</ssl-allowed-ciphers>
+        <deny-ip>/var/azuracast/stations/bytecate/config/ip_bans.txt</deny-ip>
+        <deny-agents>/var/azuracast/stations/bytecate/config/user_agent_bans.txt</deny-agents>
+        <x-forwarded-for>127.0.0.1</x-forwarded-for>
+    </paths>
+    <logging>
+        <accesslog>icecast_access.log</accesslog>
+        <errorlog>/dev/stderr</errorlog>
+        <loglevel>2</loglevel>
+        <logsize>10000</logsize>
+    </logging>
+    <security>
+        <chroot>0</chroot>
+    </security>
+</icecast>

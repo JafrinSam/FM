@@ -1,66 +1,47 @@
-// src/services/scheduleApi.js
+import { handleResponse } from "./handleResponse";
 
-// Adjust the base URL if your API is hosted elsewhere
-const API_BASE_URL = 'http://localhost:5000/api';
-
-/**
- * Helper function to handle fetch responses
- */
-const handleResponse = async (response) => {
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Request failed with status ${response.status}`);
-  }
-  // Delete requests might returns 204 No Content
-  if (response.status === 204) return null;
-  return response.json();
-};
+const API_BASE_URL = 'http://localhost:1337/api';
 
 export const scheduleApi = {
-  /**
-   * Fetch all schedules
-   */
-  getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/schedules`);
+  // This one was already working (returns 200), keeping it safe.
+  getByDay: async (day) => {
+    const query = new URLSearchParams();
+    query.append('filters[day][$eq]', day);
+    
+    // Populate relations for the schedule entry
+    query.append('populate[show][populate][rjs][populate][photo][fields][0]', 'url');
+    query.append('populate[show][populate][CoverImage][fields][0]', 'url');
+    
+    query.append('sort', 'startTime:asc');
+
+    const response = await fetch(`${API_BASE_URL}/weekly-schedules?${query.toString()}`);
     return handleResponse(response);
   },
 
-  /**
-   * Create a new schedule
-   * @param {Object} data { hour, minute, filename }
-   */
-  create: async (data) => {
-    const response = await fetch(`${API_BASE_URL}/schedules`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    return handleResponse(response);
-  },
+  // THE FIX IS HERE
+  getFeatured: async () => {
+    const query = new URLSearchParams();
+    
+    // 1. Filter
+    query.append('filters[IsLive][$eq]', 'true');
+    
+    // 2. Populate CoverImage (Specific fields only)
+    query.append('populate[CoverImage][fields][0]', 'url');
+    query.append('populate[CoverImage][fields][1]', 'alternativeText');
+    
+    // 3. Populate RJs (Specific fields only)
+    query.append('populate[rjs][populate][photo][fields][0]', 'url');
+    
+    // 4. Populate Weekly Schedules (CRITICAL FIX)
+    // Do NOT use '*' here. Explicitly ask for time fields only.
+    // This prevents it from trying to load the parent 'show' relation again.
+    query.append('populate[weekly_schedules][fields][0]', 'day');
+    query.append('populate[weekly_schedules][fields][1]', 'startTime');
+    query.append('populate[weekly_schedules][fields][2]', 'endTime');
+    
+    query.append('pagination[limit]', '1');
 
-  /**
-   * Update an existing schedule
-   * @param {string} id The schedule ID
-   * @param {Object} data { hour, minute, filename }
-   */
-  update: async (id, data) => {
-    const response = await fetch(`${API_BASE_URL}/schedules/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    const response = await fetch(`${API_BASE_URL}/shows?${query.toString()}`);
     return handleResponse(response);
-  },
-
-  /**
-   * Delete a schedule
-   * @param {string} id The schedule ID
-   */
-  delete: async (id) => {
-    const response = await fetch(`${API_BASE_URL}/schedules/${id}`, {
-      method: 'DELETE',
-    });
-    return handleResponse(response);
-  },
+  }
 };
-

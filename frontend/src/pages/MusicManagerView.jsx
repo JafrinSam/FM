@@ -1,321 +1,363 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { assetApi } from '../services/assetApi';
+import { useTheme } from '../context/ThemeContext'; // Import your hook
 import toast, { Toaster } from 'react-hot-toast';
 import { 
-  Music, Edit2, Trash2, UploadCloud, RefreshCw, 
-  FileAudio, Save, X, User, Tag 
+  Music, Edit3, Trash2, UploadCloud, RefreshCw, 
+  X, User, Disc, Tag, Image as ImageIcon
 } from 'lucide-react';
 
-// --- Helper: Asset Row ---
-const AssetRow = ({ asset, onDelete, onEdit }) => {
-  const sizeMB = (asset.size / (1024 * 1024)).toFixed(2);
-  
-  // Color coding for types
-  const typeColors = {
-    Music: "bg-blue-900/30 text-blue-400 border-blue-500/20",
-    Jingle: "bg-purple-900/30 text-purple-400 border-purple-500/20",
-    Ad: "bg-yellow-900/30 text-yellow-400 border-yellow-500/20",
-    StationID: "bg-green-900/30 text-green-400 border-green-500/20",
-    default: "bg-gray-800 text-gray-400 border-gray-700"
+// --- Type Badge Helper (Kept semantic colors, adapted for themes) ---
+const TypeBadge = ({ type }) => {
+  const styles = {
+    Music: "text-blue-500 border-blue-500/30 bg-blue-500/10",
+    Jingle: "text-purple-500 border-purple-500/30 bg-purple-500/10",
+    Ad: "text-yellow-500 border-yellow-500/30 bg-yellow-500/10",
+    StationID: "text-green-500 border-green-500/30 bg-green-500/10",
+    "Prerecorded Show": "text-orange-500 border-orange-500/30 bg-orange-500/10",
+    default: "text-[var(--text-secondary)] border-[var(--border-color)] bg-[var(--bg-secondary)]"
   };
-  const badgeClass = typeColors[asset.type] || typeColors.default;
-
   return (
-    <tr className="border-b border-border hover:bg-surface transition-colors duration-150 group">
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-surface rounded-lg text-accent">
-            <FileAudio size={20} />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-medium text-primary text-base">{asset.title || asset.originalName}</span>
-            <span className="text-xs text-secondary">{asset.filename}</span>
-          </div>
-        </div>
-      </td>
-      <td className="px-6 py-4 text-sm">
-        <span className={`px-2 py-1 rounded text-s font-bold border ${badgeClass}`}>
-          {asset.type || "Music"}
-        </span>
-      </td>
-      <td className="px-6 py-4 text-sm text-secondary">
-        <div className="flex items-center gap-2">
-          {asset.artist && asset.artist !== "Unknown" ? (
-            <>
-              <User size={14} className="opacity-50" />
-              {asset.artist}
-            </>
-          ) : (
-            <span className="italic opacity-50">Unknown</span>
-          )}
-        </div>
-      </td>
-      <td className="px-6 py-4 text-sm text-secondary font-mono">
-        {sizeMB} MB
-      </td>
-      <td className="px-6 py-4 text-right whitespace-nowrap text-sm font-medium">
-        <div className="flex justify-end gap-2">
-          <button 
-            onClick={() => onEdit(asset)}
-            className="p-2 text-secondary hover:text-accent hover:bg-background rounded-full transition-colors"
-          >
-            <Edit2 size={18} />
-          </button>
-          <button 
-            onClick={() => onDelete(asset._id)}
-            className="p-2 text-secondary hover:text-red-500 hover:bg-background rounded-full transition-colors"
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
-      </td>
-    </tr>
+    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${styles[type] || styles.default}`}>
+      {type}
+    </span>
   );
 };
 
-export default function MusicManagerView() {
+export default function AdminMusicManager() {
+  const { currentTheme } = useTheme(); // Optional: used if we need JS access to theme
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // Upload State (Added 'type')
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  
+  // Upload State
   const [uploadFiles, setUploadFiles] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [uploadMeta, setUploadMeta] = useState({ artist: '', title: '', type: 'Music' });
 
-  // Edit State (Added 'type')
+  // Edit State
   const [editingAsset, setEditingAsset] = useState(null);
-  const [editForm, setEditForm] = useState({ title: '', artist: '', type: 'Music' });
+  const [editForm, setEditForm] = useState({ title: '', artist: '', album: '', type: 'Music' });
 
   const fetchAssets = useCallback(async () => {
-    if (assets.length === 0) setLoading(true);
+    setLoading(true);
     try {
       const data = await assetApi.getAll();
       setAssets(data);
     } catch (err) {
-      toast.error(`Failed to load library: ${err.message}`);
+      toast.error("Failed to sync library");
     } finally {
       setLoading(false);
     }
-  }, [assets.length]);
+  }, []);
 
   useEffect(() => { fetchAssets(); }, []);
 
+  // --- DRAG AND DROP HANDLERS ---
+  const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const validFiles = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('audio/'));
+      if (validFiles.length > 0) {
+        setUploadFiles(validFiles);
+        toast.success(`${validFiles.length} audio file(s) ready`);
+      } else {
+        toast.error("Please drop valid audio files");
+      }
+    }
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!uploadFiles || uploadFiles.length === 0) return;
+    if (!uploadFiles) return;
 
     const formData = new FormData();
     Array.from(uploadFiles).forEach((file) => formData.append('musicFiles', file));
-    
-    // Append Metadata
+    formData.append('type', uploadMeta.type);
     if (uploadMeta.artist) formData.append('artist', uploadMeta.artist);
     if (uploadMeta.title) formData.append('title', uploadMeta.title);
-    formData.append('type', uploadMeta.type); // <--- Send Type
 
-    const uploadPromise = fetch('http://localhost:5000/api/file/upload', {
+    const promise = fetch('http://localhost:5000/api/file/upload', {
         method: 'POST',
         body: formData
     }).then(async (res) => {
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.message || 'Upload failed');
-        }
+        if (!res.ok) throw new Error((await res.json()).message);
         return res.json();
     });
 
-    toast.promise(uploadPromise, {
-      loading: 'Uploading...',
-      success: (res) => {
+    toast.promise(promise, {
+      loading: 'Uploading & Extracting Metadata...',
+      success: () => {
         setUploadFiles(null);
-        setUploadMeta({ artist: '', title: '', type: 'Music' }); // Reset
-        document.getElementById('fileInput').value = ""; 
+        setUploadMeta({ artist: '', title: '', type: 'Music' });
+        setShowUploadModal(false);
         fetchAssets();
-        return `Uploaded successfully!`;
+        return 'Upload Complete';
       },
       error: (err) => `Upload failed: ${err.message}`
     });
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete permanently?")) return;
-    toast.promise(assetApi.delete(id), {
-      loading: 'Deleting...',
-      success: () => { fetchAssets(); return 'Deleted'; },
-      error: (err) => `Error: ${err.message}`
-    });
-  };
-
-  const startEdit = (asset) => {
-    setEditingAsset(asset);
-    setEditForm({
-      title: asset.title || asset.originalName,
-      artist: asset.artist || '',
-      type: asset.type || 'Music' // <--- Load Type
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const saveEdit = async (e) => {
+  const handleUpdate = async (e) => {
     e.preventDefault();
     toast.promise(assetApi.update(editingAsset._id, editForm), {
       loading: 'Updating...',
       success: () => {
         setEditingAsset(null);
         fetchAssets();
-        return 'Updated successfully';
+        return 'Asset Updated';
       },
       error: (err) => `Error: ${err.message}`
     });
   };
 
-  return (
-    <div className="min-h-full p-8 bg-background text-primary transition-colors duration-300">
-      <Toaster position="top-right" toastOptions={{ style: { background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' } }} />
+  const handleDelete = async (id) => {
+    if (!window.confirm("Delete this track?")) return;
+    toast.promise(assetApi.delete(id), {
+      loading: 'Deleting...',
+      success: () => { fetchAssets(); return 'Asset Deleted'; },
+      error: 'Delete failed'
+    });
+  };
 
-      <div className="flex justify-between items-center mb-8 border-b border-border pb-4">
-        <h1 className="text-3xl font-extrabold text-accent flex items-center gap-3">
-          <Music size={32} /> Music Library
-        </h1>
-        {loading && <div className="text-accent animate-pulse font-medium text-sm">Syncing...</div>}
+  // --- STYLES (Using CSS Variables) ---
+  const containerStyle = "p-6 max-w-7xl mx-auto space-y-6 min-h-screen bg-[var(--bg-primary)] transition-colors duration-300";
+  const cardStyle = "bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-lg transition-colors duration-300";
+  const headerTextStyle = "text-[var(--text-primary)]";
+  const subTextStyle = "text-[var(--text-secondary)]";
+  const inputStyle = "w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg p-2.5 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-color)] transition-colors";
+  const buttonPrimaryStyle = "px-4 py-2 bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-white rounded-lg font-medium shadow-md transition-all";
+  const buttonSecondaryStyle = "px-4 py-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors";
+
+  return (
+    <div className={containerStyle}>
+      <Toaster position="bottom-right" toastOptions={{ 
+        style: { 
+          background: 'var(--bg-card)', 
+          color: 'var(--text-primary)', 
+          border: '1px solid var(--border-color)' 
+        } 
+      }} />
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className={`text-2xl font-bold flex items-center gap-2 ${headerTextStyle}`}>
+            <Disc className="text-[var(--accent-color)]" /> Master Music Library
+          </h1>
+          <p className={`text-sm ${subTextStyle}`}>Manage assets, sync ID3 tags, and organize station media.</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={fetchAssets} className={`p-2 rounded-lg transition hover:bg-[var(--bg-secondary)] ${subTextStyle} hover:text-[var(--text-primary)]`}>
+            <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+          </button>
+          <button 
+            onClick={() => setShowUploadModal(true)}
+            className={`flex items-center gap-2 ${buttonPrimaryStyle}`}
+          >
+            <UploadCloud size={18} /> Upload New
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
-        
-        {/* --- UPLOAD CARD --- */}
-        <div className="bg-card border border-border p-6 rounded-xl shadow-lg h-fit">
-          <h2 className="text-xl font-semibold mb-4 text-primary flex items-center gap-2">
-            <UploadCloud size={20} /> Upload New Tracks
-          </h2>
-          <form onSubmit={handleUpload} className="space-y-4">
-            <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-accent transition-colors text-center">
-              <input 
-                id="fileInput"
-                type="file" multiple accept=".mp3,audio/mpeg"
-                onChange={(e) => setUploadFiles(e.target.files)}
-                className="block w-full text-sm text-secondary file:bg-accent file:text-white file:border-0 file:rounded-full file:px-4 file:py-2 file:mr-4 cursor-pointer"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                    <label className="block text-xs font-medium text-secondary mb-1">Asset Type</label>
-                    <select 
-                        value={uploadMeta.type}
-                        onChange={e => setUploadMeta(p => ({...p, type: e.target.value}))}
-                        className="w-full bg-surface border border-border rounded p-2 text-sm text-primary focus:border-accent outline-none"
+      {/* Asset Table */}
+      <div className={cardStyle}>
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-[var(--bg-secondary)] border-b border-[var(--border-color)]">
+              <th className={`p-4 font-medium text-xs uppercase ${subTextStyle}`}>Track Info</th>
+              <th className={`p-4 font-medium text-xs uppercase ${subTextStyle}`}>Artist</th>
+              <th className={`p-4 font-medium text-xs uppercase ${subTextStyle}`}>Album</th>
+              <th className={`p-4 font-medium text-xs uppercase ${subTextStyle}`}>Type</th>
+              <th className={`p-4 font-medium text-xs uppercase ${subTextStyle}`}>Duration</th>
+              <th className={`p-4 font-medium text-xs uppercase text-right ${subTextStyle}`}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--border-color)]">
+            {assets.map((asset) => (
+              <tr key={asset._id} className="group hover:bg-[var(--bg-secondary)]/50 transition duration-150">
+                <td className="p-4">
+                  <div className="flex items-center gap-4">
+                    {/* Cover Art */}
+                    <div className="w-10 h-10 rounded overflow-hidden bg-[var(--bg-secondary)] flex-shrink-0 border border-[var(--border-color)]">
+                      {asset.coverArt ? (
+                        <img 
+                          src={`http://localhost:5000${asset.coverArt}`} 
+                          alt="Cover" 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {e.target.style.display='none'}}
+                        />
+                      ) : (
+                        <div className={`w-full h-full flex items-center justify-center ${subTextStyle}`}>
+                          <Music size={16} />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div>
+                      <div className={`font-medium ${headerTextStyle}`}>{asset.title || asset.originalName}</div>
+                      <div className={`text-xs font-mono ${subTextStyle}`}>{asset.filename}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className={`p-4 text-sm ${subTextStyle}`}>
+                  {asset.artist && asset.artist !== 'Unknown' ? (
+                    <span className="flex items-center gap-1.5"><User size={12} className="opacity-50"/> {asset.artist}</span>
+                  ) : <span className="italic opacity-50">No Artist Tag</span>}
+                </td>
+                <td className={`p-4 text-sm ${subTextStyle}`}>
+                  {asset.album || <span className="italic opacity-50">--</span>}
+                </td>
+                <td className="p-4">
+                  <TypeBadge type={asset.type} />
+                </td>
+                <td className={`p-4 text-sm font-mono ${subTextStyle}`}>
+                  {asset.duration ? new Date(asset.duration * 1000).toISOString().substr(14, 5) : '--:--'}
+                </td>
+                <td className="p-4 text-right">
+                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
+                    <button 
+                      onClick={() => {
+                        setEditingAsset(asset);
+                        setEditForm({ 
+                          title: asset.title, 
+                          artist: asset.artist, 
+                          album: asset.album, 
+                          type: asset.type 
+                        });
+                      }}
+                      className={`p-1.5 rounded transition hover:bg-[var(--accent-color)]/10 hover:text-[var(--accent-color)] ${subTextStyle}`}
                     >
-                        <option value="Music">Music</option>
-                        <option value="Jingle">Jingle</option>
-                        <option value="StationID">Station ID</option>
-                        <option value="Ad">Advertisement</option>
-                        <option value="Prerecorded Show">Prerecorded Show</option>
-                    </select>
-                </div>
-                <div>
-                    <input type="text" placeholder="Artist (Optional)" value={uploadMeta.artist}
-                        onChange={e => setUploadMeta(p => ({...p, artist: e.target.value}))}
-                        className="w-full bg-surface border border-border rounded p-2 text-sm text-primary focus:border-accent outline-none"
-                    />
-                </div>
-                <div>
-                    <input type="text" placeholder="Title (Optional)" value={uploadMeta.title}
-                        onChange={e => setUploadMeta(p => ({...p, title: e.target.value}))}
-                        className="w-full bg-surface border border-border rounded p-2 text-sm text-primary focus:border-accent outline-none"
-                    />
-                </div>
+                      <Edit3 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(asset._id)}
+                      className={`p-1.5 rounded transition hover:bg-[var(--danger-color)]/10 hover:text-[var(--danger-color)] ${subTextStyle}`}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {assets.length === 0 && !loading && (
+              <tr>
+                <td colSpan="6" className={`p-8 text-center ${subTextStyle}`}>
+                  No assets found. Upload some music to get started.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* --- EDIT MODAL --- */}
+      {editingAsset && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className={`${cardStyle} w-full max-w-lg p-6 shadow-2xl border-[var(--accent-color)]/30`}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className={`text-lg font-bold flex items-center gap-2 ${headerTextStyle}`}>
+                <Tag size={18} className="text-[var(--accent-color)]" /> Edit Metadata
+              </h3>
+              <button onClick={() => setEditingAsset(null)} className={`${subTextStyle} hover:text-[var(--text-primary)]`}><X size={20}/></button>
             </div>
+            
+            <form onSubmit={handleUpdate} className="space-y-4">
+              <div className="p-3 bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 rounded text-[var(--accent-color)] text-xs mb-4">
+                <p><strong>Note:</strong> Changes here will update the Database AND write ID3 tags to the actual MP3 file.</p>
+              </div>
 
-            <button type="submit" disabled={!uploadFiles || uploadFiles.length === 0}
-              className="w-full flex justify-center items-center gap-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors"
-            >
-              <UploadCloud size={18} /> Upload Tracks
-            </button>
-          </form>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className={`text-xs font-semibold uppercase mb-1 block ${subTextStyle}`}>Track Title</label>
+                  <input type="text" value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} className={inputStyle} />
+                </div>
+                <div className="col-span-2">
+                  <label className={`text-xs font-semibold uppercase mb-1 block ${subTextStyle}`}>Artist Name</label>
+                  <input type="text" value={editForm.artist} onChange={e => setEditForm({...editForm, artist: e.target.value})} className={inputStyle} />
+                </div>
+                <div className="col-span-2">
+                  <label className={`text-xs font-semibold uppercase mb-1 block ${subTextStyle}`}>Album</label>
+                  <input type="text" value={editForm.album} onChange={e => setEditForm({...editForm, album: e.target.value})} className={inputStyle} />
+                </div>
+                <div className="col-span-2">
+                  <label className={`text-xs font-semibold uppercase mb-1 block ${subTextStyle}`}>Asset Type</label>
+                  <select value={editForm.type} onChange={e => setEditForm({...editForm, type: e.target.value})} className={inputStyle}>
+                    {['Music', 'Jingle', 'Ad', 'StationID', 'Prerecorded Show'].map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button type="button" onClick={() => setEditingAsset(null)} className={buttonSecondaryStyle}>Cancel</button>
+                <button type="submit" className={buttonPrimaryStyle}>Save Changes</button>
+              </div>
+            </form>
+          </div>
         </div>
+      )}
 
-        {/* --- EDIT CARD --- */}
-        {editingAsset && (
-          <div className="bg-card border border-accent/50 p-6 rounded-xl shadow-lg h-fit lg:col-span-2 animate-in fade-in slide-in-from-top-4">
-            <h2 className="text-xl font-semibold mb-4 text-primary flex items-center gap-2">
-              <Edit2 size={20} className="text-accent" /> Editing: {editingAsset.filename}
-            </h2>
-            <form onSubmit={saveEdit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Title</label>
-                <input type="text" value={editForm.title}
-                  onChange={(e) => setEditForm(p => ({...p, title: e.target.value}))}
-                  className="w-full bg-surface border border-border rounded p-2 text-primary focus:border-accent outline-none"
+      {/* --- UPLOAD MODAL --- */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className={`${cardStyle} w-full max-w-lg p-6 shadow-2xl border-[var(--border-color)]`}>
+            <h3 className={`text-lg font-bold mb-4 ${headerTextStyle}`}>Upload New Tracks</h3>
+            <form onSubmit={handleUpload} className="space-y-4">
+              
+              {/* Drag Zone */}
+              <div 
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`
+                  border-2 border-dashed rounded-lg p-8 text-center transition cursor-pointer relative
+                  ${isDragging 
+                    ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10' 
+                    : 'border-[var(--border-color)] bg-[var(--bg-secondary)] hover:border-[var(--accent-color)]'
+                  }
+                `}
+              >
+                <input 
+                  type="file" multiple accept=".mp3" 
+                  onChange={e => setUploadFiles(e.target.files)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-secondary mb-1">Artist</label>
-                <input type="text" value={editForm.artist}
-                  onChange={(e) => setEditForm(p => ({...p, artist: e.target.value}))}
-                  className="w-full bg-surface border border-border rounded p-2 text-primary focus:border-accent outline-none"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-secondary mb-1">Asset Type</label>
-                <select value={editForm.type}
-                    onChange={e => setEditForm(p => ({...p, type: e.target.value}))}
-                    className="w-full bg-surface border border-border rounded p-2 text-primary focus:border-accent outline-none"
-                >
-                    <option value="Music">Music</option>
-                    <option value="Jingle">Jingle</option>
-                    <option value="StationID">Station ID</option>
-                    <option value="Ad">Advertisement</option>
-                    <option value="Prerecorded Show">Prerecorded Show</option>
-                </select>
+                <UploadCloud size={32} className={`mx-auto mb-2 ${isDragging ? 'text-[var(--accent-color)]' : subTextStyle}`} />
+                <p className={`text-sm font-medium ${headerTextStyle}`}>
+                  {uploadFiles ? `${uploadFiles.length} file(s) selected` : "Drag MP3s here or click to browse"}
+                </p>
+                <p className={`text-xs mt-1 ${subTextStyle}`}>Supports multiple files</p>
               </div>
 
-              <div className="md:col-span-2 flex justify-end space-x-3 mt-2">
-                <button type="button" onClick={() => setEditingAsset(null)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-secondary hover:text-primary bg-surface rounded border border-border transition-colors"
-                >
-                  <X size={16} /> Cancel
-                </button>
-                <button type="submit"
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded shadow transition-colors"
-                >
-                  <Save size={16} /> Save Changes
+              <div className={`p-3 rounded text-xs bg-[var(--bg-secondary)] ${subTextStyle}`}>
+                 Leave Artist/Title blank to auto-detect from file metadata.
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                 <input type="text" placeholder="Override Artist" className={inputStyle} onChange={e => setUploadMeta({...uploadMeta, artist: e.target.value})} />
+                 <select className={inputStyle} onChange={e => setUploadMeta({...uploadMeta, type: e.target.value})}>
+                   <option value="Music">Music</option>
+                   <option value="Jingle">Jingle</option>
+                   <option value="Ad">Ad</option>
+                   <option value="Prerecorded Show">Prerecorded Show</option>
+                 </select>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={() => setShowUploadModal(false)} className={buttonSecondaryStyle}>Cancel</button>
+                <button disabled={!uploadFiles} type="submit" className={`${buttonPrimaryStyle} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                  Start Upload
                 </button>
               </div>
             </form>
           </div>
-        )}
-      </div>
-
-      {/* --- ASSET LIST --- */}
-      <div className="bg-card border border-border rounded-xl shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-border flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-primary flex items-center gap-2">
-            Library <span className="text-xs bg-surface text-secondary px-2 py-1 rounded-full">{assets.length} tracks</span>
-          </h2>
-          <button onClick={() => { fetchAssets(); toast.success('List refreshed'); }} 
-            className="text-sm text-accent hover:text-accent-hover flex items-center gap-1 transition-colors"
-          >
-            <RefreshCw size={14} /> Refresh
-          </button>
         </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-surface text-secondary text-xs uppercase border-b border-border">
-              <tr>
-                <th className="px-6 py-3 font-semibold">Track Info</th>
-                <th className="px-6 py-3 font-semibold">Type</th>
-                <th className="px-6 py-3 font-semibold">Artist</th>
-                <th className="px-6 py-3 font-semibold">Size</th>
-                <th className="px-6 py-3 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {assets.map(asset => (
-                <AssetRow key={asset._id} asset={asset} onDelete={handleDelete} onEdit={startEdit} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

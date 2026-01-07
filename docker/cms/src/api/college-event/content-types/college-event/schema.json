@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "college_events",
+  "info": {
+    "singularName": "college-event",
+    "pluralName": "college-events",
+    "displayName": "college-event"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string"
+    },
+    "date": {
+      "type": "date"
+    },
+    "time": {
+      "type": "time"
+    },
+    "Category": {
+      "type": "enumeration",
+      "default": "Academic",
+      "enum": [
+        "Tech",
+        "Cultural",
+        "Academic"
+      ]
+    },
+    "tumbnail": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "description": {
+      "type": "richtext"
+    }
+  }
+}

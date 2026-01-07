@@ -7,6 +7,7 @@ import {
 
 //💡 Import the Theme Provider
 import { ThemeProvider } from './context/ThemeContext';
+import { PlayerProvider } from './context/PlayerContext';
 
 // Layouts
 import AdminLayout from './layout/AdminLayout'; 
@@ -14,7 +15,6 @@ import ClientLayout from './layout/ClientLayout';
 
 // Components
 import LoadingScreen from './pages/LoadingScreen'; // 2. Import your new Loading Screen (adjust path if needed)
-import LiquidsoapPublicClient from './components/LiquidsoapPublicClient';
 
 // Views - Admin
 import SchedulerView from './pages/SchedulerView';   
@@ -23,6 +23,10 @@ import AboutView from './pages/AboutView';
 import QueueManager from './pages/QueueManager'
 import Home from './pages/Home';
 import Live from './pages/Live';
+import NotFound from './pages/NotFound';
+import Schedule from './pages/Schedule';
+import GlobalPlayer from './components/client/GlobalPlayer';
+
 //import CommanderView from './pages/CommanderView'; 
 
 // Placeholders
@@ -45,6 +49,7 @@ function App() {
   return (
     // 💡 Wrap everything in ThemeProvider so LoadingScreen gets the correct colors
     <ThemeProvider>
+      <PlayerProvider>
       
       {/* 5. Show LoadingScreen if loading is true. 
           Since it has 'fixed z-50', it will overlay on top of everything. */}
@@ -59,6 +64,9 @@ function App() {
             <Route index element={<Home/>} /> 
             <Route path="live" element={<Live/>} />
             <Route path="about" element={<AboutView/>} />
+            <Route path="/schedule" element={<Schedule />} />
+
+            <Route path="*" element={<NotFound />} />
             
             {/* Note: You had a duplicate 'about' route here. I removed the placeholder one. */}
           </Route>
@@ -71,13 +79,16 @@ function App() {
             <Route path='queue' element={<QueueManager/>} />
             <Route path="logs" element={<PlaceholderLogs />} /> 
             <Route path="settings" element={<PlaceholderSettings />} /> 
+            <Route path="*" element={<NotFound />} />
           </Route>
 
           {/* 404 Not Found Page */}
-          <Route path="*" element={<h1 className="text-center p-10 text-primary">404: Page Not Found</h1>} />
+          <Route path="*" element={<NotFound />} />
 
         </Routes>
+      <GlobalPlayer />
       </BrowserRouter>
+      </PlayerProvider>
     </ThemeProvider>
   );
 }

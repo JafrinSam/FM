@@ -31,22 +31,12 @@ async function initializeApp() {
   try {
     // 1. Connect Services
     await connectDB(); 
-    await connectRabbit(); // Connect to RabbitMQ
+    //await connectRabbit(); // Connect to RabbitMQ
     
     // 2. Start Scheduler
     scheduler.start(); 
 
-    // 3. 🟢 START RABBITMQ CONSUMER
-    // This function runs whenever the Webhook pushes data to the Queue
-    consumeQueue((newTrackData) => {
-        console.log("📥 Received from Rabbit Queue:", newTrackData.title);
-        
-        // Update Local State (for /api/now-playing)
-        currentTrackState = newTrackData;
-
-        // Broadcast to Frontend (WebSockets)
-        broadcastToClients("NOW_PLAYING", newTrackData);
-    });
+    
 
     // 4. API Routes
     

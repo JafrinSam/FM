@@ -1,30 +1,86 @@
 import { createUploader } from "../utils/createUploader.js";
 import { MusicAsset } from "../models/MusicAsset.js"; 
+import { azuraClient, STATION_ID } from "../config/azuracast.js";
 import fs from "fs";
 import path from "path";
 import { parseFile } from 'music-metadata';
+import NodeID3 from 'node-id3';
 
-// Define Directories
-const MUSIC_DIR = process.env.MUSIC_DIR || "radio/music";
-const SCHEDULED_DIR = "radio/scheduled"; // <--- 1. Define Scheduled Directory
+// 1. Setup Directories
+const TEMP_DIR = "temp_uploads"; 
+const COVERS_DIR = path.join(process.cwd(), "public", "covers");
 
+// Ensure directories exist
+if (!fs.existsSync(TEMP_DIR)) {
+  console.log(`[INIT] Creating Temp Directory: ${TEMP_DIR}`);
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
+if (!fs.existsSync(COVERS_DIR)) {
+  console.log(`[INIT] Creating Covers Directory: ${COVERS_DIR}`);
+  fs.mkdirSync(COVERS_DIR, { recursive: true });
+}
+
+// 2. Configure Uploader
 const uploadMusic = createUploader({
-  uploadDir: MUSIC_DIR, // Files initially land here
+  uploadDir: TEMP_DIR, 
   fieldName: "musicFiles",
   mode: "multiple",
   maxFiles: 10,
-  maxFileSizeMB: 300, // Increased limit for longer shows
+  maxFileSizeMB: 300, 
   allowedExtensions: [".mp3"],
   allowedMimeTypes: ["audio/mpeg"]
 });
 
+// Helper: Determine AzuraCast Folder
+const getAzuraTargetDir = (type) => {
+  return type === "Prerecorded Show" ? "Scheduled" : "Music";
+};
+
+// Helper: Extract and Save Cover Art
+const extractCoverArt = async (filePath, filenameBase) => {
+  console.log(`[COVER-ART] Extracting for: ${filenameBase}`);
+  try {
+    const metadata = await parseFile(filePath);
+    const picture = metadata.common.picture ? metadata.common.picture[0] : null;
+
+    if (picture) {
+      const extension = picture.format === 'image/jpeg' ? 'jpg' : 'png';
+      const coverFilename = `${filenameBase}.${extension}`;
+      const savePath = path.join(COVERS_DIR, coverFilename);
+
+      fs.writeFileSync(savePath, picture.data);
+      console.log(`[COVER-ART] Saved to: ${savePath}`);
+      return `/covers/${coverFilename}`;
+    } else {
+      console.log(`[COVER-ART] No picture found in metadata.`);
+    }
+  } catch (err) {
+    console.warn(`[COVER-ART] Extraction Failed: ${err.message}`);
+  }
+  return null;
+};
+
+// ===========================================
+// UPLOAD (Extract Art -> Upload to Azura -> DB)
+// ===========================================
 export const uploadMusicFiles = async (req, res) => {
+  console.log("[UPLOAD] Request received...");
+  
   uploadMusic(req, res, async (err) => {
     let successfulRegistrations = [];
     let registrationErrors = [];
 
-    if (err) return res.status(400).json({ error: err.message });
-    if (!req.files || req.files.length === 0) return res.status(400).json({ error: "No files uploaded" });
+    if (err) {
+      console.error(`[UPLOAD] Multer Error: ${err.message}`);
+      return res.status(400).json({ error: err.message });
+    }
+    
+    if (!req.files || req.files.length === 0) {
+      console.warn("[UPLOAD] No files received.");
+      return res.status(400).json({ error: "No files uploaded" });
+    }
+
+    console.log(`[UPLOAD] Processing ${req.files.length} files...`);
 
     const manualArtist = req.body.artist || null;
     const manualTitle = req.body.title || null;
@@ -33,84 +89,90 @@ export const uploadMusicFiles = async (req, res) => {
     const uploadedFiles = req.files;
 
     for (const file of uploadedFiles) {
-      // Initial path (where uploader put it)
-      const initialFullPath = path.resolve(process.cwd(), MUSIC_DIR, file.filename);
-      
-      // Variables to track final location
-      let finalRelativePath = path.join(MUSIC_DIR, file.filename);
-      let finalFullPath = initialFullPath;
+      const tempFilePath = file.path; 
+      console.log(`[FILE] Processing: ${file.originalname} (${file.size} bytes)`);
 
       try {
-        if (!fs.existsSync(initialFullPath)) {
-          throw new Error("Uploaded file not found on disk");
-        }
-
-        // 1. Parse Metadata (do this before moving)
+        // A. Parse Metadata & Extract Cover Art
         let metadata = { common: {}, format: {} };
+        let coverArtUrl = null;
+        
         try {
-          metadata = await parseFile(initialFullPath);
+          console.log(`[METADATA] Parsing file...`);
+          metadata = await parseFile(tempFilePath);
+          
+          const baseName = path.parse(file.filename).name;
+          coverArtUrl = await extractCoverArt(tempFilePath, baseName);
+          
         } catch (metaErr) {
-          console.warn(`Metadata error: ${metaErr.message}`);
+          console.warn(`[METADATA] Warning: ${metaErr.message}`);
         }
 
-        // 2. CHECK TYPE AND MOVE FILE IF NEEDED
-        if (manualType === "Prerecorded Show") {
-          const scheduledDirAbsolute = path.resolve(process.cwd(), SCHEDULED_DIR);
-          
-          // Ensure directory exists
-          if (!fs.existsSync(scheduledDirAbsolute)) {
-            fs.mkdirSync(scheduledDirAbsolute, { recursive: true });
-          }
+        // B. Determine AzuraCast Path
+        const azuraDir = getAzuraTargetDir(manualType);
+        const azuraFilePath = `${azuraDir}/${file.filename}`;
+        console.log(`[AZURACAST] Uploading to: ${azuraFilePath}`);
 
-          const newFullPath = path.join(scheduledDirAbsolute, file.filename);
-          
-          // Move the file
-          await fs.promises.rename(initialFullPath, newFullPath);
+        // C. Upload MP3 to AzuraCast
+        const fileStream = fs.createReadStream(tempFilePath);
+        
+        await azuraClient.post(`/station/${STATION_ID}/files`, fileStream, {
+          params: { file: azuraFilePath },
+          headers: { 'Content-Type': file.mimetype }
+        });
+        console.log(`[AZURACAST] Upload Successful.`);
 
-          // Update tracking variables
-          finalFullPath = newFullPath;
-          finalRelativePath = path.join(SCHEDULED_DIR, file.filename);
-        }
-
+        // D. Create DB Entry
         const isSingleUpload = uploadedFiles.length === 1;
-
-        // 3. Create DB Entry with the CORRECT path
+        
         const asset = await MusicAsset.create({
           filename: file.filename,
           originalName: file.originalname,
-          filePath: finalRelativePath, // <--- Saves 'radio/scheduled/file.mp3' or 'radio/music/file.mp3'
+          filePath: azuraFilePath, 
+          coverArt: coverArtUrl, 
           size: file.size,
-          title: isSingleUpload && manualTitle
-            ? manualTitle
+          title: isSingleUpload && manualTitle 
+            ? manualTitle 
             : metadata.common.title || file.originalname.replace(/\.mp3$/i, ''),
-          artist: isSingleUpload && manualArtist
-            ? manualArtist
+          artist: isSingleUpload && manualArtist 
+            ? manualArtist 
             : metadata.common.artist || "Unknown Artist",
-          duration: Number.isFinite(metadata.format.duration)
-            ? Math.round(metadata.format.duration)
+          album: metadata.common.album || "Unknown Album",
+          duration: Number.isFinite(metadata.format.duration) 
+            ? Math.round(metadata.format.duration) 
             : 0,
           type: manualType
         });
 
+        console.log(`[DB] Created Asset ID: ${asset._id}`);
         successfulRegistrations.push(asset);
 
-      } catch (dbError) {
-        console.error(`Registration failed for ${file.filename}:`, dbError.message);
-        registrationErrors.push({ filename: file.filename, error: dbError.message });
-
-        // Clean up: Try to delete file from wherever it ended up
-        await fs.promises.unlink(finalFullPath).catch(() => {});
+      } catch (uploadError) {
+        console.error(`[ERROR] Failed processing ${file.filename}: ${uploadError.message}`);
+        // Log AzuraCast response data if available
+        if (uploadError.response) {
+            console.error(`[AZURA-ERROR] Status: ${uploadError.response.status}, Data:`, uploadError.response.data);
+        }
+        registrationErrors.push({ filename: file.filename, error: uploadError.message });
+      } finally {
+        // E. Cleanup Temp MP3
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+          console.log(`[CLEANUP] Deleted temp file: ${tempFilePath}`);
+        }
       }
     }
 
     if (successfulRegistrations.length > 0) {
-      return res.status(200).json({
+      console.log(`[UPLOAD] Complete. Success: ${successfulRegistrations.length}, Errors: ${registrationErrors.length}`);
+      res.status(200).json({
         message: `${successfulRegistrations.length} file(s) processed.`,
         uploaded: successfulRegistrations,
         errors: registrationErrors
       });
     } else {
-      return res.status(500).json({
+      console.error(`[UPLOAD] All files failed.`);
+      res.status(500).json({
         message: 'No files registered.',
         errors: registrationErrors
       });
@@ -118,150 +180,173 @@ export const uploadMusicFiles = async (req, res) => {
   });
 };
 
-// ... (list, get, update functions remain the same) ...
-export async function listMusicAssets(req, res) {
-    try {
-      const assets = await MusicAsset.find().sort({ uploadedAt: -1 });
-      res.status(200).json(assets);
-    } catch (error) {
-      console.error("Error listing assets:", error);
-      res.status(500).json({ message: "Failed to retrieve music assets." });
-    }
-  }
-  
-  export async function getMusicAssetById(req, res) {
-    try {
-      const asset = await MusicAsset.findById(req.params.id);
-      if (!asset) {
-        return res.status(404).json({ message: "Music asset not found." });
-      }
-      res.status(200).json(asset);
-    } catch (error) {
-      console.error("Error getting asset by ID:", error);
-      res.status(500).json({ message: "Error retrieving asset." });
-    }
-  }
-  
-
+// ===========================================
+// UPDATE (Sync Metadata & DB)
+// ===========================================
 export async function updateMusicAsset(req, res) {
+  const assetId = req.params.id;
+  console.log(`[UPDATE] Updating Asset ID: ${assetId}`);
+
   try {
-    // 1. Fetch the existing asset to know its CURRENT state
-    const currentAsset = await MusicAsset.findById(req.params.id);
+    const currentAsset = await MusicAsset.findById(assetId);
     if (!currentAsset) {
+      console.warn(`[UPDATE] Asset not found: ${assetId}`);
       return res.status(404).json({ message: "Asset not found." });
     }
 
     const newType = req.body.type;
     const oldType = currentAsset.type;
     
-    // Prepare the update object
     let updateData = {
       artist: req.body.artist,
       title: req.body.title,
-      originalName: req.body.originalName,
-      type: newType
+      type: newType,
+      album: req.body.album 
     };
 
-    // 2. Check if we need to move the file
-    // Condition A: Moving FROM Music TO Scheduled
-    if (newType === "Prerecorded Show" && oldType !== "Prerecorded Show") {
-      
-      const oldPath = path.resolve(process.cwd(), currentAsset.filePath);
-      const newDir = path.resolve(process.cwd(), SCHEDULED_DIR);
-      const newPath = path.join(newDir, currentAsset.filename);
+    console.log(`[UPDATE] New Data:`, updateData);
 
-      // Ensure destination exists
-      if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+    // 1. TRY UPDATING ID3 TAGS
+    const volumeRoot = path.join(process.cwd(), 'station_data', 'radio', 'media'); 
+    // Fix: Ensure we handle potential slashes correctly or use AzuraCast naming conventions if modified
+    const localFilePath = path.join(volumeRoot, currentAsset.filePath); 
+    
+    console.log(`[ID3] Checking file at: ${localFilePath}`);
 
-      if (fs.existsSync(oldPath)) {
-        await fs.promises.rename(oldPath, newPath);
-        console.log(`Moved file to Scheduled: ${currentAsset.filename}`);
-        
-        // Update the DB path
-        updateData.filePath = path.join(SCHEDULED_DIR, currentAsset.filename);
+    if (fs.existsSync(localFilePath)) {
+      const tags = {
+        title: req.body.title || currentAsset.title,
+        artist: req.body.artist || currentAsset.artist,
+        album: req.body.album || currentAsset.album
+      };
+
+      const success = NodeID3.update(tags, localFilePath);
+      if (success) {
+        console.log(`[ID3] Tags Updated Successfully.`);
       } else {
-        console.warn(`File missing at ${oldPath}, skipping move.`);
+        console.warn(`[ID3] Failed to write tags. Check permissions/file integrity.`);
       }
+    } else {
+        console.warn(`[ID3] File not found locally. Skipping tag update.`);
+    }
 
-    // Condition B: Moving FROM Scheduled TO Music (or others)
-    } else if (newType !== "Prerecorded Show" && oldType === "Prerecorded Show") {
+    // 2. MOVE FILE IN AZURACAST (If Type Changed)
+    let fileMoved = false;
+    if (newType && newType !== oldType) {
+      console.log(`[MOVE] Type changed from ${oldType} to ${newType}. Moving file...`);
       
-      const oldPath = path.resolve(process.cwd(), currentAsset.filePath);
-      const newDir = path.resolve(process.cwd(), MUSIC_DIR);
-      const newPath = path.join(newDir, currentAsset.filename);
+      const oldAzuraPath = currentAsset.filePath;
+      const newDir = getAzuraTargetDir(newType);
+      const newAzuraPath = `${newDir}/${currentAsset.filename}`;
 
-      // Ensure destination exists
-      if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+      try {
+        await azuraClient.post(`/station/${STATION_ID}/files/batch`, {
+          "do": "move",
+          "files": [oldAzuraPath],
+          "target": newDir
+        });
 
-      if (fs.existsSync(oldPath)) {
-        await fs.promises.rename(oldPath, newPath);
-        console.log(`Moved file back to Music: ${currentAsset.filename}`);
-        
-        // Update the DB path
-        updateData.filePath = path.join(MUSIC_DIR, currentAsset.filename);
-      } else {
-        console.warn(`File missing at ${oldPath}, skipping move.`);
+        console.log(`[MOVE] Success: ${oldAzuraPath} -> ${newAzuraPath}`);
+        updateData.filePath = newAzuraPath;
+        fileMoved = true;
+      } catch (moveError) {
+        console.error(`[MOVE] Failed: ${moveError.message}`);
+        if(moveError.response) console.error(`[AZURA-ERROR]`, moveError.response.data);
       }
     }
 
-    // 3. Perform the Database Update
+    // 3. Update DB
     const updatedAsset = await MusicAsset.findByIdAndUpdate(
-      req.params.id,
+      assetId,
       updateData,
-      { new: true, runValidators: true }
+      { new: true }
     );
+    console.log(`[DB] Updated record saved.`);
 
     res.status(200).json({ 
       message: "Asset updated successfully.", 
-      moved: updateData.filePath !== currentAsset.filePath, // simple flag for frontend
+      moved: fileMoved,
       asset: updatedAsset 
     });
 
   } catch (error) {
-    console.error("Error updating asset:", error);
+    console.error(`[UPDATE] Critical Error: ${error.message}`);
     res.status(500).json({ message: "Failed to update asset." });
   }
 }
-// ===========================================
-// DELETE (Updated to check DB path)
-// ===========================================
 
+// ===========================================
+// DELETE (Clean up Art, AzuraCast & DB)
+// ===========================================
 export async function deleteMusicAsset(req, res) {
+  const assetId = req.params.id;
+  console.log(`[DELETE] Request for Asset ID: ${assetId}`);
+
   try {
-    const asset = await MusicAsset.findById(req.params.id);
-
+    const asset = await MusicAsset.findById(assetId);
     if (!asset) {
-      return res.status(404).json({ message: "Music asset not found in database." });
+        console.warn(`[DELETE] Asset not found in DB.`);
+        return res.status(404).json({ message: "Asset not found." });
     }
 
-    // UPDATED: Resolve path based on what is stored in DB (handles both /music and /scheduled)
-    const fullFilePath = path.resolve(process.cwd(), asset.filePath);
-    
-    let fileDeleted = false;
-
-    if (fs.existsSync(fullFilePath)) {
-      try {
-        fs.unlinkSync(fullFilePath);
-        fileDeleted = true;
-        console.log(`Successfully deleted file: ${fullFilePath}`);
-      } catch (fileError) {
-        console.error(`Failed to delete physical file: ${fullFilePath}`, fileError);
+    // 1. Delete Cover Art
+    if (asset.coverArt) {
+      const coverPath = path.join(process.cwd(), 'public', asset.coverArt);
+      if (fs.existsSync(coverPath)) {
+        fs.unlinkSync(coverPath);
+        console.log(`[DELETE] Cover art removed: ${coverPath}`);
       }
-    } else {
-      console.warn(`File not found on disk, deleting DB record only: ${fullFilePath}`);
     }
 
-    await MusicAsset.findByIdAndDelete(req.params.id);
+    // 2. Delete from AzuraCast
+    try {
+      console.log(`[DELETE] Removing from AzuraCast: ${asset.filePath}`);
+      await azuraClient.post(`/station/${STATION_ID}/files/batch`, {
+        "do": "delete",
+        "files": [asset.filePath]
+      });
+      console.log(`[DELETE] AzuraCast delete successful.`);
+    } catch (azuraError) {
+      console.error(`[DELETE] AzuraCast Error: ${azuraError.message}`);
+    }
+
+    // 3. Delete from DB
+    await MusicAsset.findByIdAndDelete(assetId);
+    console.log(`[DELETE] DB record removed.`);
 
     res.status(200).json({
       message: "Music asset deleted successfully.",
-      dbDeleted: true,
-      fileDeleted: fileDeleted,
       filename: asset.filename
     });
 
   } catch (error) {
-    console.error("Error deleting asset:", error);
+    console.error(`[DELETE] Critical Error: ${error.message}`);
     res.status(500).json({ message: "Failed to delete music asset." });
   }
 }
+
+// List Assets
+export async function listMusicAssets(req, res) {
+  // console.log("[LIST] Fetching all assets..."); // Optional: Commented out to reduce spam on refresh
+  try {
+    const assets = await MusicAsset.find().sort({ uploadedAt: -1 });
+    // console.log(`[LIST] Found ${assets.length} assets.`);
+    res.status(200).json(assets);
+  } catch (error) {
+    console.error(`[LIST] Error: ${error.message}`);
+    res.status(500).json({ message: "Failed to retrieve music assets." });
+  }
+}
+
+// Get Asset By ID
+export async function getMusicAssetById(req, res) {
+  try {
+    const asset = await MusicAsset.findById(req.params.id);
+    if (!asset) return res.status(404).json({ message: "Asset not found." });
+    res.status(200).json(asset);
+  } catch (error) {
+    console.error(`[GET] Error: ${error.message}`);
+    res.status(500).json({ message: "Error retrieving asset." });
+  }
+}
+

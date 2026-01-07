@@ -1,108 +1,79 @@
 services:
   # -------------------------------
-  # 1. SRS (WebRTC → RTMP)
+  # 1. AZURACAST (All-In-One)
   # -------------------------------
-  srs:
-    image: ossrs/srs:5
-    container_name: srs
+  web:
+    image: ghcr.io/azuracast/azuracast:stable
+    container_name: azuracast_web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      AZURACAST_DC_REVISION: 1
+    volumes:
+      # Data Mappings
+      - ./station_data:/var/azuracast/stations
+      - azuracast_db_data:/var/lib/mysql
+      - ./azuracast/backups:/var/azuracast/backups
+      
     ports:
-      - "1935:1935"
-      - "1985:1985"
-      - "8080:8080"
-      - "8000:8000/udp"
-    volumes:
-      - ./srs/srs.conf:/usr/local/srs/conf/srs.conf
+      - "80:80"
+      - "443:443"
+      - "2022:2022"
+      - "8000-8050:8000-8050" 
 
 
-  # -------------------------------
-  # 3. Icecast (Distribution)
-  # -------------------------------
-# -------------------------------
-  # 3. Icecast (Distribution)
-  # -------------------------------
-  icecast:
-    image: moul/icecast
-    container_name: icecast
-    ports:
-      - "8000:8000"
-    environment:
-      - ICECAST_SOURCE_PASSWORD=hackme
-      - ICECAST_ADMIN_PASSWORD=hackme
-      - ICECAST_PASSWORD=hackme
-      - ICECAST_RELAY_PASSWORD=hackme
-    volumes:
-      # Mount our custom config
-      - ./icecast:/etc/icecast2
 
-  # 3. Message Queue (RabbitMQ)
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    ports: 
-      - "5672:5672"   # AMQP protocol
-      - "15672:15672" # Management UI
-    environment:
-      RABBITMQ_DEFAULT_USER: user
-      RABBITMQ_DEFAULT_PASS: password
-
-
-  # 5. Liquidsoap INGEST (Handles "Dirty" Live Inputs)
-  ls-ingest:
-    image: savonet/liquidsoap:rolling-release-v2.4.x
-    container_name: ls-ingest
-    depends_on: [srs, icecast]
-    ports:
-      - "1235:1235" # 👈 Maps to Ingest Telnet
-    environment:
-      ICECAST_PASS: hackme
-    volumes:
-      - ./liquidsoap/config/ingest.liq:/script/ingest.liq:ro
-    command: ["liquidsoap", "/script/ingest.liq"]
-
-  # 6. Liquidsoap PLAYOUT (The "Clean" Master Output)
-  ls-playout:
-    image: savonet/liquidsoap:rolling-release-v2.4.x
-    container_name: ls-playout
-    depends_on: [icecast]
-    ports: ["1234:1234"] # Telnet only on the Master
- 
-  # 🚨 KEY FIX FOR BARE METAL NODE.JS 🚨
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    
-    environment:
-      ICECAST_PASS: hackme
-      # Point to the host machine using the mapped hostname
-      SIDECAR_URL: "http://host.docker.internal:5000"
-    volumes:
-      - ./liquidsoap/config/playout.liq:/script/playout.liq:ro
-      - ../backend/radio/:/radio/:ro # Mount your music here
-    command: ["liquidsoap", "/script/playout.liq"]
-
-
-  # -------------------------------
-  # 2. Liquidsoap (Mixer + Control)
-  # -------------------------------
-#  liquidsoap:
-#    image: savonet/liquidsoap:rolling-release-v2.4.x
-#    container_name: liquidsoap
-#    depends_on:
-#      - srs
-#      - icecast
-#    ports:
-#      - "1234:1234" # Telnet Port
+#  strapi:
+#    container_name: strapi
+#    image: naskio/strapi:latest-alpine
+#    env_file: .env
 #    environment:
-#      ICECAST_SOURCE_PASSWORD: hackme
+#      DATABASE_CLIENT: ${DATABASE_CLIENT}
+#      DATABASE_HOST: strapiDB
+#      DATABASE_PORT: ${DATABASE_PORT}
+#      DATABASE_NAME: ${DATABASE_NAME}
+#      DATABASE_USERNAME: ${DATABASE_USERNAME}
+#      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+#      JWT_SECRET: ${JWT_SECRET}
+#      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
+#      APP_KEYS: ${APP_KEYS}
+ #     NODE_ENV: ${NODE_ENV}
 #    volumes:
-#      # 1. Mount the configuration script
-#      - ./liquidsoap/config/radio.liq:/radio/radio.liq:ro
-#      
-#      # 2. 💡 CRITICAL: Mount the SAME music folder your backend uploads to.
-#      # Ensure this path matches where your Node.js 'backend' folder is relative to this file.
-#      - ../backend/radio/:/radio/
-#      
-#      # 3. (Optional) Mount playlists folder if you use it
-#      - ./liquidsoap/playlists:/radio/playlists
-#    
-#
-#    command: ["liquidsoap", "/radio/radio.liq"]
+
+      # FIX: Mount the whole folder so Strapi can create files inside it
+#      - ./cms:/srv/app
+#    command: /bin/sh -c "yarn install && yarn add react && yarn develop"
+#    ports:
+#      - "1337:1337"
+#    networks:
+#      - strapi
+#    depends_on:
+#      - strapiDB
+
+  strapiDB:
+    container_name: strapiDB
+    platform: linux/amd64 #for platform error on Apple M1 chips
+    env_file: .env
+    image: postgres:16.0-alpine
+    environment:
+      POSTGRES_USER: ${DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    volumes:
+      - strapi-data:/var/lib/postgresql/data/ #using a volume
+      - ./data:/var/lib/postgresql/data/ # if you want to use a bind folder
+
+    ports:
+      - "5432:5432"
+    networks:
+      - strapi
+
+
+networks:
+  strapi:
+    name: strapi
+    driver: bridge
+
+volumes:
+  azuracast_db_data:
+  strapi-data:

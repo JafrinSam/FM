@@ -19,6 +19,7 @@
     "mongoose": "^9.0.1",
     "multer": "^2.0.2",
     "music-metadata": "^11.10.3",
+    "node-id3": "^0.2.9",
     "nodemon": "^3.1.11",
     "telnet-client": "^2.2.9",
     "ws": "^8.18.3"
