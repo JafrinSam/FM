@@ -1,7 +1,6 @@
+
+
 services:
-  # -------------------------------
-  # 1. AZURACAST (All-In-One)
-  # -------------------------------
   web:
     image: ghcr.io/azuracast/azuracast:stable
     container_name: azuracast_web
@@ -10,70 +9,60 @@ services:
     environment:
       AZURACAST_DC_REVISION: 1
     volumes:
-      # Data Mappings
-      - ./station_data:/var/azuracast/stations
-      - azuracast_db_data:/var/lib/mysql
+      # --- CRITICAL DATA (Must Persist) ---
+      - azuracast_db_data:/var/lib/mysql          # Database (Settings/Users)
+      - ./station_data:/var/azuracast/stations # Music/Media Files
+      
+      # --- OPTIONAL / SUPPORT DATA ---
       - ./azuracast/backups:/var/azuracast/backups
+      - ./azuracast/storage:/var/azuracast/storage  # Uploads/Album Art
       
     ports:
       - "80:80"
       - "443:443"
       - "2022:2022"
-      - "8000-8050:8000-8050" 
+      - "8000-8010:8000-8010" # Reduced range for faster startup
 
-
-
-#  strapi:
-#    container_name: strapi
-#    image: naskio/strapi:latest-alpine
-#    env_file: .env
-#    environment:
-#      DATABASE_CLIENT: ${DATABASE_CLIENT}
-#      DATABASE_HOST: strapiDB
-#      DATABASE_PORT: ${DATABASE_PORT}
-#      DATABASE_NAME: ${DATABASE_NAME}
-#      DATABASE_USERNAME: ${DATABASE_USERNAME}
-#      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-#      JWT_SECRET: ${JWT_SECRET}
-#      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
-#      APP_KEYS: ${APP_KEYS}
- #     NODE_ENV: ${NODE_ENV}
-#    volumes:
-
-      # FIX: Mount the whole folder so Strapi can create files inside it
-#      - ./cms:/srv/app
-#    command: /bin/sh -c "yarn install && yarn add react && yarn develop"
-#    ports:
-#      - "1337:1337"
-#    networks:
-#      - strapi
-#    depends_on:
-#      - strapiDB
-
+  # -------------------------------
+  # STRAPI (Separate Service)
+  # -------------------------------
   strapiDB:
     container_name: strapiDB
-    platform: linux/amd64 #for platform error on Apple M1 chips
-    env_file: .env
     image: postgres:16.0-alpine
+    restart: unless-stopped
+    env_file: .env
     environment:
       POSTGRES_USER: ${DATABASE_USERNAME}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: ${DATABASE_NAME}
-    volumes:
-      - strapi-data:/var/lib/postgresql/data/ #using a volume
-      - ./data:/var/lib/postgresql/data/ # if you want to use a bind folder
-
     ports:
-      - "5432:5432"
+      - "5432:5432"  
+    volumes:
+      - strapi-data:/var/lib/postgresql/data/
     networks:
       - strapi
-
+  
+  minio:
+    image: minio/minio
+    container_name: minio_server
+    ports:
+      - "9000:9000"  # API Port
+      - "9001:9001"  # Console Port
+    environment:
+      MINIO_ROOT_USER: "admin"
+      MINIO_ROOT_PASSWORD: "password123"
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio_data:/data
 
 networks:
   strapi:
-    name: strapi
+    driver: bridge
+  default: 
     driver: bridge
 
 volumes:
   azuracast_db_data:
+  azuracast_station_data:
+  azuracast_storage:
   strapi-data:

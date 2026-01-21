@@ -9,7 +9,7 @@ import LottieAnimation from '../components/utlis/LottieAnimation';
 
 // 1. Import Services & Utils
 import { eventApi } from '../services/eventApi'; 
-import { getStrapiImage } from '../utlis/strapi'; // Ensure this path is correct
+import { getStrapiImage } from '../utils/strapi'; // Ensure this path is correct
 
 // 2. Import Lottie JSONs
 import studioAnimation from '../assets/animations/radio-studio.json';
@@ -67,8 +67,7 @@ export default function Home() {
               formattedTime = timeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
            }
 
-           // Extract Image URL using helper
-           const imageUrl = getStrapiImage(item.tumbnail); // Note: 'tumbnail' matches your Strapi field name
+           const imageUrl = getStrapiImage(item.tumbnail); 
 
            return {
              id: item.documentId, 
@@ -76,7 +75,7 @@ export default function Home() {
              date: `${month} ${day}`,
              time: formattedTime,
              category: item.Category,
-             image: imageUrl // Add image URL to object
+             image: imageUrl 
            };
         });
 
@@ -218,16 +217,21 @@ export default function Home() {
         </section>
 
 
-        {/* ================= 3. UPCOMING CAMPUS EVENTS (DYNAMIC FROM STRAPI) ================= */}
-        <section className="py-24 bg-surface border-y border-border/50 dark:border-white/5 transition-colors duration-300">
+{/* ================= 3. UPCOMING CAMPUS EVENTS (ENHANCED UI) ================= */}
+        <section className="py-24 bg-surface border-y border-border/50 dark:border-white/5 transition-colors duration-300 relative overflow-hidden">
+          {/* Background Decoration */}
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
               <div>
-                <h2 className="text-sm font-bold text-accent uppercase tracking-[0.2em] mb-3">Campus Happenings</h2>
-                <h3 className="text-3xl md:text-4xl font-bold text-primary">Upcoming at SRM</h3>
+                <h2 className="text-sm font-bold text-accent uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                   <Activity size={16} /> Campus Pulse
+                </h2>
+                <h3 className="text-4xl md:text-5xl font-black text-primary tracking-tight">Upcoming at SRM</h3>
               </div>
-              <Link to="/events" className="hidden md:flex items-center gap-2 text-secondary hover:text-accent font-medium transition-colors group">
-                Full Calendar <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              <Link to="/events" className="hidden md:flex items-center gap-2 px-6 py-3 rounded-full border border-border hover:bg-background transition-all font-medium group">
+                View Full Calendar <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
 
@@ -236,73 +240,83 @@ export default function Home() {
                {loadingEvents ? (
                    // Skeleton Loading
                    [...Array(3)].map((_, i) => (
-                      <div key={i} className="bg-card h-64 rounded-[1.3rem] animate-pulse border border-border p-6 flex flex-col gap-4">
-                         <div className="w-16 h-16 bg-surface rounded-xl"></div>
-                         <div className="w-3/4 h-6 bg-surface rounded"></div>
+                      <div key={i} className="bg-card h-[22rem] rounded-[2rem] animate-pulse border border-border p-6 flex flex-col justify-end gap-4">
+                         <div className="w-3/4 h-8 bg-surface rounded-lg"></div>
                          <div className="w-1/2 h-4 bg-surface rounded"></div>
                       </div>
                    ))
                ) : (
                    // Real Events from Strapi
                    campusEvents.map(event => (
-                     <div key={event.id} className="group bg-background border border-border p-1 rounded-3xl hover:border-accent/50 transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 cursor-pointer">
-                        <div className="bg-card h-full p-6 rounded-[1.3rem] flex flex-col relative overflow-hidden transition-colors duration-300">
-                            
-                            {/* --- CONDITIONAL IMAGE RENDERING --- */}
-                            {event.image ? (
-                                <div className="absolute inset-0 z-0">
-                                   <img 
-                                      src={event.image} 
-                                      alt={event.title} 
-                                      className="w-full h-full object-cover opacity-20 group-hover:opacity-30 group-hover:scale-105 transition-all duration-700" 
-                                   />
-                                   <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent"></div>
-                                </div>
-                            ) : (
-                                <div className="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity transform rotate-12">
-                                    <Calendar size={120} />
-                                </div>
-                            )}
+                     <div key={event.id} className="group relative h-[24rem] rounded-[2.5rem] overflow-hidden shadow-lg hover:shadow-2xl hover:shadow-accent/10 transition-all duration-500 cursor-pointer hover:-translate-y-2">
+                        
+                        {/* --- BACKGROUND IMAGE --- */}
+                        <div className="absolute inset-0">
+                           <img 
+                              src={event.image} 
+                              alt={event.title} 
+                              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                           />
+                           {/* Gradient Overlay for Text Readability */}
+                           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80 group-hover:opacity-90 transition-opacity"></div>
+                        </div>
 
-                            <div className="relative z-10 mb-6 flex justify-between items-start">
-                              <div className="bg-surface border border-border/50 dark:border-white/5 p-3 rounded-2xl text-center min-w-[75px] shadow-inner transition-colors duration-300 backdrop-blur-md">
-                                <span className="block text-xs font-bold text-accent uppercase tracking-wider">{event.date.split(' ')[0]}</span>
-                                <span className="block text-2xl font-black text-primary">{event.date.split(' ')[1]}</span>
-                              </div>
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-secondary border border-border px-3 py-1 rounded-full backdrop-blur-md bg-surface/50">
-                                  {event.category}
-                              </span>
+                        {/* --- TOP BADGES --- */}
+                        <div className="absolute top-6 left-6 right-6 flex justify-between items-start z-20">
+                            {/* Date Badge */}
+                            <div className="bg-white/10 backdrop-blur-md border border-white/20 p-3 rounded-2xl text-center min-w-[70px] text-white shadow-lg">
+                                <span className="block text-[10px] font-bold uppercase tracking-widest opacity-80">{event.date.split(' ')[0]}</span>
+                                <span className="block text-2xl font-black leading-none mt-1">{event.date.split(' ')[1]}</span>
                             </div>
                             
-                            <div className="relative z-10 mt-auto">
-                                <h4 className="text-xl font-bold text-primary mb-2 group-hover:text-accent transition-colors line-clamp-2">{event.title}</h4>
-                                <p className="text-secondary text-sm flex items-center gap-2 font-medium">
+                            {/* Category Tag */}
+                            <span className="px-4 py-1.5 rounded-full bg-accent text-white text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-accent/20 border border-white/10">
+                                {event.category}
+                            </span>
+                        </div>
+
+                        {/* --- BOTTOM CONTENT (Glass Card) --- */}
+                        <div className="absolute bottom-4 left-4 right-4 bg-white/10 dark:bg-black/40 backdrop-blur-xl border border-white/10 p-6 rounded-[2rem] text-white transition-all duration-300 group-hover:bg-white/20">
+                            <h4 className="text-xl font-bold mb-2 leading-tight line-clamp-2">{event.title}</h4>
+                            
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm text-white/70 flex items-center gap-2 font-medium">
                                   <ClockIcon /> {event.time}
                                 </p>
+                                
+                                {/* Hover Action Button */}
+                                <div className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center opacity-0 transform translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                    <ArrowRight size={14} />
+                                </div>
                             </div>
                         </div>
+
                      </div>
                    ))
                )}
                
                {/* Callout Card (Always present) */}
-                <div className="relative rounded-3xl overflow-hidden flex flex-col justify-end p-8 text-white group shadow-2xl">
-                    <div className="absolute inset-0 bg-gradient-to-br from-accent to-orange-700 z-0"></div>
+                <div className="relative h-[24rem] rounded-[2.5rem] overflow-hidden flex flex-col justify-end p-8 text-white group shadow-2xl hover:shadow-orange-500/20 transition-all duration-500">
+                    <div className="absolute inset-0 bg-gradient-to-br from-orange-600 to-purple-700 z-0"></div>
                     <img src="https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=2070&auto=format&fit=crop" 
-                        className="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-10 transition-opacity z-0" alt="Audience" />
+                        className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay group-hover:scale-110 transition-transform duration-700 z-0" alt="Audience" />
                     
-                    <div className="relative z-10">
-                        <h4 className="text-3xl font-bold mb-2">Want to be heard?</h4>
-                        <p className="text-white/80 mb-6 text-sm leading-relaxed">Join the ByteCast team as an RJ or Sound Engineer.</p>
-                        <Link to="/about" className="inline-flex items-center gap-2 bg-white text-accent px-6 py-3 rounded-full font-bold hover:bg-gray-100 transition shadow-lg">
-                        Apply Now <ArrowRight size={16} />
+                    <div className="relative z-10 mb-4">
+                        <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6 text-white border border-white/10">
+                            <Mic2 size={24} />
+                        </div>
+                        <h4 className="text-3xl font-black mb-3 leading-tight">Your Voice <br/> Matters.</h4>
+                        <p className="text-white/80 mb-8 text-sm leading-relaxed max-w-[200px]">Join the ByteCast team as an RJ, Sound Engineer, or Content Creator.</p>
+                        
+                        <Link to="/about" className="inline-flex w-full items-center justify-center gap-2 bg-white text-orange-600 px-6 py-4 rounded-xl font-bold hover:bg-gray-50 transition shadow-lg">
+                           Join the Club <ArrowRight size={18} />
                         </Link>
                     </div>
                 </div>
             </div>
           </div>
         </section>
-
+        
         {/* ... Rest of sections (Features, RJs, Interactive, Recruitment) ... */}
          <section className="py-24 bg-background transition-colors duration-300">
             {/* ... Features Section Content ... */}
@@ -349,21 +363,15 @@ export default function Home() {
                  <div className="bg-card/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-12 shadow-2xl">
                      <div className="text-center mb-10">
                         <div className="w-20 h-20 mx-auto mb-2"><LottieAnimation animationData={musicNoteAnimation} width="100%" height="100%" /></div>
-                        <h2 className="text-3xl font-bold text-primary">Request a Song</h2>
+                        <h2 className="text-3xl font-bold text-primary">Request a Show</h2>
                      </div>
                      <form className="space-y-4 max-w-md mx-auto">
-                         <div className="flex gap-2"><input type="text" placeholder="Song Name" className="w-full px-6 py-4 bg-background/50 border border-border rounded-full" /><button className="bg-accent text-white px-6 rounded-full"><Send size={18} /></button></div>
+                         <div className="flex gap-2"><input type="text" placeholder="Show Name" className="w-full px-6 py-4 bg-background/50 border border-border rounded-full" /><button className="bg-accent text-white px-6 rounded-full"><Send size={18} /></button></div>
                      </form>
                  </div>
              </div>
          </section>
          
-         <section className="bg-accent text-white py-16">
-            <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-8">
-                <div className="flex items-center gap-6"><div className="bg-white/20 p-4 rounded-full backdrop-blur-sm"><Headphones size={40} className="text-white" /></div><div><h2 className="text-3xl font-black leading-tight">Join the Crew</h2></div></div>
-                <Link to="/about" className="px-8 py-4 bg-white text-accent font-bold rounded-full hover:bg-gray-100 shadow-lg whitespace-nowrap">Apply Now</Link>
-            </div>
-        </section>
 
       </main>
 

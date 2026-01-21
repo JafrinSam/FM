@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Calendar, Clock, Star, AlertCircle, Radio, Mic, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { scheduleApi } from '../services/scheduleApi';
-import { getStrapiImage } from '../utlis/strapi';
+import { getStrapiImage } from '../utils/strapi';
 
 // --- CONSTANTS & HELPERS (Keep these exactly as they were) ---
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

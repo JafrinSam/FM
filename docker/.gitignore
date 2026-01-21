@@ -1,1 +1,7 @@
 liquidsoap/music/**
+
+minio_data
+
+station_data/** 
+
+data

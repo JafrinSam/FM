@@ -10,7 +10,7 @@ init.daemon.pidfile.path := "/var/azuracast/stations/bytecate/config/liquidsoap.
 
 settings.init.compact_before_start := true
 
-environment.set("TZ", "Asia/Kolkata") 
+environment.set("TZ", "UTC") 
 
 settings.azuracast.liquidsoap_api_port := 8004
 settings.azuracast.api_url := "http://127.0.0.1:6010/api/internal/1/liquidsoap"
@@ -32,14 +32,32 @@ settings.azuracast.live_broadcast_text := "Live Broadcast"
 azuracast.start_http_api()
 
 
-playlist_default = playlist(id="playlist_default",mime_type="audio/x-mpegurl",mode="randomize",reload_mode="watch","/var/azuracast/stations/bytecate/playlists/playlist_default.m3u")
-
 playlist_taml_hit = playlist(id="playlist_taml_hit",mime_type="audio/x-mpegurl",mode="randomize",reload_mode="watch","/var/azuracast/stations/bytecate/playlists/playlist_taml_hit.m3u")
 
-playlist_justin_bieber = playlist(id="playlist_justin_bieber",mime_type="audio/x-mpegurl",mode="randomize",reload_mode="watch","/var/azuracast/stations/bytecate/playlists/playlist_justin_bieber.m3u")
+def schedule_1_date_range() =
+    # 2026-01-10 00:00:00
+    range_start = 1768003200.
+    # 2026-01-10 23:59:59
+    range_end = 1768089599.
+    current_time = time()
+    result = (range_start <= current_time and current_time <= range_end)
+    result
+end
+
+playlist_default = playlist(id="playlist_default",mime_type="audio/x-mpegurl",mode="randomize",reload_mode="watch","/var/azuracast/stations/bytecate/playlists/playlist_default.m3u")
+
+playlist_aj = playlist(id="playlist_aj",mime_type="audio/x-mpegurl",mode="normal",reload_mode="watch","/var/azuracast/stations/bytecate/playlists/playlist_aj.m3u")
 
 # Standard Playlists
-radio = random(id="standard_playlists", weights=[3, 3, 3], [playlist_default, playlist_taml_hit, playlist_justin_bieber])
+radio = random(id="standard_playlists", weights=[3], [playlist_default])
+
+# Standard Schedule Switches
+
+radio = switch(id="schedule_switch", track_sensitive=true, [ ({ schedule_1_date_range() and 10h8m-11h39m }, playlist_taml_hit), ({true}, radio) ])
+
+# Interrupting Schedule Switches
+
+radio = switch(id="schedule_switch", track_sensitive=false, [ ({ 18h27m-19h13m }, playlist_aj), ({true}, radio) ])
 
 radio = azuracast.enable_autodj(radio)
 

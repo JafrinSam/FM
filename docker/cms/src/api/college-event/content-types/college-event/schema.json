@@ -41,6 +41,15 @@
     },
     "description": {
       "type": "richtext"
+    },
+    "location": {
+      "type": "string"
+    },
+    "registration_status": {
+      "type": "string"
+    },
+    "registration_link": {
+      "type": "string"
     }
   }
 }

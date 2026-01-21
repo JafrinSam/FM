@@ -455,7 +455,10 @@ export interface ApiCollegeEventCollegeEvent
       'api::college-event.college-event'
     > &
       Schema.Attribute.Private;
+    location: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
+    registration_link: Schema.Attribute.String;
+    registration_status: Schema.Attribute.String;
     time: Schema.Attribute.Time;
     title: Schema.Attribute.String;
     tumbnail: Schema.Attribute.Media<'images' | 'files' | 'videos' | 'audios'>;

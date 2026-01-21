@@ -4,6 +4,7 @@ import {
   Routes, 
   Route 
 } from 'react-router-dom';
+import { Toaster } from 'sonner';
 
 //💡 Import the Theme Provider
 import { ThemeProvider } from './context/ThemeContext';
@@ -17,15 +18,21 @@ import ClientLayout from './layout/ClientLayout';
 import LoadingScreen from './pages/LoadingScreen'; // 2. Import your new Loading Screen (adjust path if needed)
 
 // Views - Admin
-import SchedulerView from './pages/SchedulerView';   
-import MusicManagerView from './pages/MusicManagerView'
+import DashboardHome from './pages/admin/DashboardHome';
+import RjManager from './pages/admin/RjManager';
+import ShowManager from './pages/admin/ShowManager';
+
+// Views - Client
+
+
 import AboutView from './pages/AboutView';
-import QueueManager from './pages/QueueManager'
+
 import Home from './pages/Home';
 import Live from './pages/Live';
 import NotFound from './pages/NotFound';
 import Schedule from './pages/Schedule';
 import GlobalPlayer from './components/client/GlobalPlayer';
+import EventsView from './pages/EventsView';
 
 //import CommanderView from './pages/CommanderView'; 
 
@@ -54,6 +61,7 @@ function App() {
       {/* 5. Show LoadingScreen if loading is true. 
           Since it has 'fixed z-50', it will overlay on top of everything. */}
       {isLoading && <LoadingScreen />}
+      <Toaster position="bottom-right" theme="dark" /> 
 
       <BrowserRouter>
         <Routes>
@@ -65,6 +73,7 @@ function App() {
             <Route path="live" element={<Live/>} />
             <Route path="about" element={<AboutView/>} />
             <Route path="/schedule" element={<Schedule />} />
+            <Route path="events" element={<EventsView />} />
 
             <Route path="*" element={<NotFound />} />
             
@@ -73,13 +82,12 @@ function App() {
 
           {/* ======================= 2. ADMIN ROUTES (AdminLayout) ======================= */}
           <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<SchedulerView />} />
-            <Route path="music" element={<MusicManagerView />} />
-            {/* <Route path="commander" element={<CommanderView />} /> */}
-            <Route path='queue' element={<QueueManager/>} />
-            <Route path="logs" element={<PlaceholderLogs />} /> 
-            <Route path="settings" element={<PlaceholderSettings />} /> 
-            <Route path="*" element={<NotFound />} />
+              <Route index element={<DashboardHome />} />
+              <Route path="rjs" element={<RjManager />} />
+              <Route path="show" element={<ShowManager />} /> 
+
+               {/* 404 Not Found Page */}
+              <Route path="*" element={<NotFound />} />
           </Route>
 
           {/* 404 Not Found Page */}

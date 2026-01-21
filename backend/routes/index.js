@@ -1,20 +1,15 @@
-import {Router} from 'express'
-const router= Router()
-import  Schedule from "./scheduleRouter.js"
-import gain from "./gainRouter.js"
-import queue from "./queueRouter.js"
-import file from "./fileRoute.js"
-import serviceStaus from "./statusRoutes.js"
-import mixer from './mixerRoutes.js'
-import webHook from './webHookRoute.js'
+import rjroute from './rjRoutes.js';
+import showroute from './showRoutes.js';
+import scheduleRoute from './scheduleRoutes.js';
+import {skipSong} from '../controllers/stationController.js';
 
+import express from 'express';
 
-router.use('/schedules',Schedule);
-router.use('/gain',gain);
-router.use('/queue',queue);
-router.use("/file",file)
-router.use('/status',serviceStaus)
-router.use("/mixer",mixer)
-router.use("/webhook",webHook)
+const router = express.Router();
 
-export default router
+router.use('/rjs', rjroute);
+router.use('/shows', showroute);
+router.use('/weekly-schedules', scheduleRoute);
+router.post('/station/skip', skipSong);
+
+export default router;
