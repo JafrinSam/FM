@@ -3,6 +3,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@plugin "@tailwindcss/typography";
 /* 2. Plugins */
 @plugin "tailwindcss-animate";
 

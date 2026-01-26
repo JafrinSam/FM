@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { Play, Pause, Volume2, VolumeX, Users, RotateCcw, FastForward } from 'lucide-react'; 
-import GlassSurface from '../utlis/GlassSurface'; 
+import GlassSurface from '../utils/GlassSurface'; 
 import { useTheme } from '../../context/ThemeContext';
 import { usePlayer } from '../../context/PlayerContext';
 

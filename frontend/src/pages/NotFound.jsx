@@ -2,7 +2,7 @@ import React from 'react';
 import { Radio, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom'; // Use Link for internal navigation
 // 1. Import your Lottie Wrapper
-import LottieAnimation from '../components/utlis/LottieAnimation'; 
+import LottieAnimation from '../components/utils/LottieAnimation'; 
 // 2. Import your JSON file
 import errorRobotData from '../assets/animations/404-robot.json'; 
 

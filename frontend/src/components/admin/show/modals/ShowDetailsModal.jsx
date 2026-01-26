@@ -4,7 +4,7 @@ import {
   Trash2, ChevronLeft, ChevronRight, CalendarX, Edit2 
 } from 'lucide-react';
 import { ScheduleAPI, RjAPI, ShowAPI } from '../../../../services/adminapi';
-import ModalPortal from '../../../utlis/ModalPortal';
+import ModalPortal from '../../../utils/ModalPortal';
 import { toast } from 'sonner';
 import { DAYS, HOURS, getMinutes, formatDate } from '../../../../utils/showUtils';
 

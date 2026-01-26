@@ -1,23 +1,14 @@
-import axios from 'axios';
-
-const API = axios.create({ baseURL: 'http://localhost:5000/api' });
+import apiClient from './apiClient'; // Import the smart client
 
 // Helper to build FormData automatically
 const createFormData = (data, files, fileKey) => {
   const formData = new FormData();
+  Object.keys(data).forEach(key => formData.append(key, data[key]));
   
-  // Append text fields
-  Object.keys(data).forEach(key => {
-    formData.append(key, data[key]);
-  });
-
-  // Append files
   if (files) {
     if (files.length !== undefined) {
-      // It's a FileList or Array (Multiple)
       Array.from(files).forEach(file => formData.append(fileKey, file));
     } else {
-      // Single File
       formData.append(fileKey, files);
     }
   }
@@ -25,30 +16,39 @@ const createFormData = (data, files, fileKey) => {
 };
 
 export const RjAPI = {
-  getAll: () => API.get('/rjs'),
-  delete: (id) => API.delete(`/rjs/${id}`),
-  create: (data, files) => API.post('/rjs', createFormData(data, files, 'photo')),
-  update: (id, data, files) => API.put(`/rjs/${id}`, createFormData(data, files, 'photo')),
+  getAll: () => apiClient.get('/rjs'),
+  delete: (id) => apiClient.delete(`/rjs/${id}`),
+  create: (data, files) => apiClient.post('/rjs', createFormData(data, files, 'photo'), {
+    headers: { 'Content-Type': 'multipart/form-data' } // Override for files
+  }),
+  update: (id, data, files) => apiClient.put(`/rjs/${id}`, createFormData(data, files, 'photo'), {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 };
 
 export const ShowAPI = {
-  getAll: () => API.get('/shows'),
-  delete: (id) => API.delete(`/shows/${id}`),
-  create: (data, file) => API.post('/shows', createFormData(data, file, 'CoverImage')),
-  update: (id, data, file) => API.put(`/shows/${id}`, createFormData(data, file, 'CoverImage')),
+  getAll: () => apiClient.get('/shows'),
+  delete: (id) => apiClient.delete(`/shows/${id}`),
+  create: (data, file) => apiClient.post('/shows', createFormData(data, file, 'CoverImage'), {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  update: (id, data, file) => apiClient.put(`/shows/${id}`, createFormData(data, file, 'CoverImage'), {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
 };
 
+// ... ScheduleAPI follows the same pattern
 export const ScheduleAPI = {
   // We usually fetch schedules via the Show, but this is useful for debugging
-  getAll: () => API.get('/weekly-schedules'),
+  getAll: () => apiClient.get('/weekly-schedules'),
   
   // Create a schedule linked to a show
   // Data: { startTime, endTime, day, show: showId }
-  create: (data) => API.post('/weekly-schedules', data),
+  create: (data) => apiClient.post('/weekly-schedules', data),
   
   // Update a specific time slot
-  update: (id, data) => API.put(`/weekly-schedules/${id}`, data),
+  update: (id, data) => apiClient.put(`/weekly-schedules/${id}`, data),
   
   // Delete a time slot
-  delete: (id) => API.delete(`/weekly-schedules/${id}`),
+  delete: (id) => apiClient.delete(`/weekly-schedules/${id}`),
 };

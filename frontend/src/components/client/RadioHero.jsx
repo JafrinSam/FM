@@ -1,6 +1,6 @@
 import React from "react";
 import { Play, Pause, Users, Music, Volume1, Volume2, FastForward } from 'lucide-react';
-import ElasticSlider from "../utlis/ElasticSlider"; 
+import ElasticSlider from "../utils/ElasticSlider"; 
 import { usePlayer } from "../../context/PlayerContext"; 
 
 export default function RadioHero() {

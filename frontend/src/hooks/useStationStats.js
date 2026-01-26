@@ -3,7 +3,9 @@ import axios from 'axios';
 
 // Replace with your actual AzuraCast URL
 // If testing locally, it might be http://localhost/api/nowplaying/1
-const AZURACAST_API_URL = 'https://your-radio-url.com/api/nowplaying/1';
+  const AZURACAST_BASE = "http://localhost"; 
+  const STATION_SHORTCODE = "bytecate";      
+  const API_URL = `${AZURACAST_BASE}/api/nowplaying/${STATION_SHORTCODE}`;
 
 export function useStationStats() {
   const [stats, setStats] = useState({
@@ -19,7 +21,7 @@ export function useStationStats() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await axios.get(AZURACAST_API_URL);
+        const response = await axios.get(API_URL);
         const data = response.data;
 
         setStats({

@@ -3,7 +3,7 @@ import { Command } from 'cmdk'; // Import the library
 import { useNavigate } from 'react-router-dom';
 import { Monitor, Calendar, Mic2, Plus, Sun, Moon, Search } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
-import ModalPortal from '../utlis/ModalPortal'; // Reuse your Portal
+import ModalPortal from '../utils/ModalPortal'; // Reuse your Portal
 
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);

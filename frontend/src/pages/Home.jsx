@@ -5,7 +5,7 @@ import {
   User, Music, Send, Instagram, Linkedin, Headphones, Star, Zap
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
-import LottieAnimation from '../components/utlis/LottieAnimation';
+import LottieAnimation from '../components/utils/LottieAnimation';
 
 // 1. Import Services & Utils
 import { eventApi } from '../services/eventApi'; 

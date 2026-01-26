@@ -5,7 +5,7 @@ import {
   Instagram, Loader2, Check, ZoomIn, RotateCcw, 
   MoreHorizontal, Mic2 
 } from 'lucide-react';
-import ModalPortal from '../../components/utlis/ModalPortal';
+import ModalPortal from '../../components/utils/ModalPortal';
 import { toast } from 'sonner';
 import Cropper from 'react-easy-crop';
 import getCroppedImg from '../../utils/cropUtils';

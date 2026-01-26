@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom'; 
 import { useTheme } from '../context/ThemeContext';
 import { Sun, Moon, Home, Info, Radio, Calendar, Menu, X } from 'lucide-react'; 
-import GlassSurface from './utlis/GlassSurface';
+import GlassSurface from './utils/GlassSurface';
 
 // IMPORT YOUR NEW LOGO COMPONENT HERE
-import ByteCastLogo from './utlis/ByteCastLogo'; // Adjust path if needed
+import ByteCastLogo from './utils/ByteCastLogo'; // Adjust path if needed
 
 export default function ClientNavbar() {
   const { themeName, toggleTheme } = useTheme();

@@ -1,6 +1,6 @@
 import React from 'react';
 // 1. Import your Lottie Wrapper
-import LottieAnimation from '../components/utlis/LottieAnimation'; 
+import LottieAnimation from '../components/utils/LottieAnimation'; 
 
 // 2. Import your JSON files (Make sure names match your saved files)
 import musicNoteData from '../assets/animations/music-loading.json'; 
@@ -9,7 +9,7 @@ import loadingTextData from '../assets/animations/text-loading.json';
 export default function LoadingScreen() {
   return (
     // Full screen overlay with high z-index
-    <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center overflow-hidden">
+    <div className="fixed inset-0 z-999999 bg-background flex flex-col items-center justify-center overflow-hidden">
       
       {/* --- Background Atmosphere Effects (Subtle) --- */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/5 rounded-full blur-3xl opacity-50 pointer-events-none"></div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, UploadCloud, Image as ImageIcon, Eye, ArrowLeft, Sun, Moon, ZoomIn, Check, Crop as CropIcon, Trash2 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import { ShowAPI, RjAPI } from '../../../../services/adminapi';
-import ModalPortal from '../../../utlis/ModalPortal';
+import ModalPortal from '../../../utils/ModalPortal';
 import { toast } from 'sonner';
 import getCroppedImg from '../../../../utils/cropUtils';
 

@@ -1,54 +1,61 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
-import { useStationStats } from '../../hooks/useStationStats'; // Import the hook
-import GlassSurface from '../utlis/GlassSurface';
+import { useStationStats } from '../../hooks/useStationStats';
+import { useAuth } from '../../context/AuthContext';
+import GlassSurface from '../utils/GlassSurface';
 import { 
-  LayoutDashboard, 
-  ListMusic, 
-  CalendarClock, 
-  Music, 
-  Settings,
-  Mic2,
-  Users
+  LayoutDashboard, CalendarClock, Music, Mic2, Users, 
+  Settings, LogOut, Radio, BarChart3, ChevronRight, 
+  CalendarDays // 1. Added Icon for Events
 } from 'lucide-react';
 
 export default function Sidebar({ isOpen, closeSidebar }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { themeName } = useTheme();
-  const { listeners, isLive, error } = useStationStats(); // Get live stats
+  const { listeners, isLive } = useStationStats();
+  const { logout } = useAuth();
   const isDark = themeName === 'dark';
 
-  const menuItems = [
-    { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/admin/scheduler', icon: CalendarClock, label: 'Scheduler' },
-    { path: '/admin/show', icon: Music, label: 'Music Library' },
-    { path: '/admin/rjs', icon: Mic2, label: 'RJs & Shows' },
-    { path: '/admin/users', icon: Users, label: 'Users' },
-    { path: '/admin/settings', icon: Settings, label: 'Settings' },
+  const navGroups = [
+    {
+      label: 'Broadcast',
+      items: [
+        { path: '/admin', icon: LayoutDashboard, label: 'Studio' },
+        { path: '/admin/show', icon: CalendarClock, label: 'Schedule' },
+        { path: '/admin/rjs', icon: Mic2, label: 'RJs & Shows' },
+      ]
+    },
+    {
+      label: 'Management',
+      items: [
+        // 2. Added Events Module Here
+        { path: '/admin/events', icon: CalendarDays, label: 'Events' },
+        { path: '/admin/users', icon: Users, label: 'Team' },
+        { path: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
+        { path: '/admin/settings', icon: Settings, label: 'Settings' },
+      ]
+    }
   ];
 
-  const getLinkClass = (path) => {
-    const isActive = path === '/admin' 
-      ? location.pathname === '/admin' 
-      : location.pathname.startsWith(path);
-
-    return `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
-      isActive 
-        ? 'bg-accent/10 text-accent font-bold border-r-2 border-accent' 
-        : 'text-secondary hover:text-primary hover:bg-primary/5'
-    }`;
+  const handleLogout = async () => {
+    await logout();
+    closeSidebar();
+    navigate('/login');
   };
 
   return (
     <>
+      {/* Mobile Backdrop */}
       <div 
-        className={`fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300 ${
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300 ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={closeSidebar}
       />
 
+      {/* Sidebar Container */}
       <aside 
         className={`fixed top-16 left-0 bottom-0 z-40 w-64 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
@@ -59,55 +66,108 @@ export default function Sidebar({ isOpen, closeSidebar }) {
           height="100%"
           borderRadius={0}
           isDark={isDark}
-          blur={20}
-          opacity={isDark ? 0.7 : 0.9}
+          blur={24}
+          opacity={isDark ? 0.9 : 0.95}
           borderWidth={0}
-          className="border-r border-white/5"
+          className="border-r border-white/5 h-full overflow-hidden" 
         >
-          <div className="flex flex-col h-full py-6 px-3">
+          {/* MAIN FLEX LAYOUT */}
+          <div className="flex flex-col h-full w-full">
             
-            <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar">
-              <div className="px-4 mb-4 text-xs font-bold text-secondary/50 uppercase tracking-widest">
-                Main Menu
-              </div>
-              
-              {menuItems.map((item) => (
-                <Link 
-                  key={item.path} 
-                  to={item.path} 
-                  onClick={closeSidebar}
-                  className={getLinkClass(item.path)}
-                >
-                  <item.icon size={20} className={location.pathname.startsWith(item.path) ? "animate-pulse" : ""} />
-                  <span>{item.label}</span>
-                </Link>
+            {/* SECTION 1: SCROLLABLE NAVIGATION */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-6 px-3 space-y-6">
+              {navGroups.map((group, idx) => (
+                <div key={idx}>
+                  <h3 className="px-4 text-[10px] font-bold text-secondary/50 uppercase tracking-widest mb-2">
+                    {group.label}
+                  </h3>
+                  <div className="space-y-1">
+                    {group.items.map((item) => {
+                      const isActive = item.path === '/admin' 
+                        ? location.pathname === '/admin' 
+                        : location.pathname.startsWith(item.path);
+
+                      return (
+                        <Link 
+                          key={item.path} 
+                          to={item.path} 
+                          onClick={closeSidebar}
+                          className={`flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-200 group relative ${
+                            isActive 
+                              ? 'text-white bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/20 font-medium' 
+                              : 'text-secondary hover:text-primary hover:bg-black/5 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <item.icon size={18} className={isActive ? "animate-pulse" : "opacity-70 group-hover:opacity-100"} />
+                            <span className="text-sm">{item.label}</span>
+                          </div>
+                          {isActive && <ChevronRight size={14} className="opacity-80" />}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
-            </nav>
+            </div>
 
-            {/* DYNAMIC STATION WIDGET */}
-            <div className="mt-auto px-4 pt-6 border-t border-primary/5">
-              <div className="bg-gradient-to-br from-accent/20 to-purple-500/10 rounded-2xl p-4 border border-accent/10">
-                <h4 className="text-sm font-bold text-primary mb-1">Station Status</h4>
+            {/* SECTION 2: BOTTOM FOOTER (Widget & Logout) */}
+            <div className="shrink-0 p-4 border-t border-white/5 bg-black/5 dark:bg-black/20 z-10 backdrop-blur-md">
+              
+              {/* FIXED WIDGET */}
+              <div className="mb-3 p-4 rounded-xl bg-gradient-to-br from-[#18181b] to-[#09090b] border border-white/10 relative overflow-hidden group shadow-lg">
+                <div className="absolute inset-0 bg-[var(--accent-color)]/5 group-hover:bg-[var(--accent-color)]/10 transition-colors"></div>
                 
-                {/* Listener Count */}
-                <div className="flex justify-between text-xs text-secondary mb-2">
-                  <span>Listeners:</span>
-                  <span className="font-bold text-primary">{error ? 'Offline' : listeners}</span>
+                <div className="flex justify-between items-start mb-3 relative z-10">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-white/5 rounded-lg border border-white/5">
+                      <Radio size={14} className="text-[var(--accent-color)]" />
+                    </div>
+                    <span className="text-xs font-semibold text-white/80">Station ID</span>
+                  </div>
+                  
+                  <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border ${
+                    isLive 
+                      ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+                    {isLive ? 'Live' : 'Auto'}
+                  </div>
                 </div>
+                
+                <div className="relative z-10 flex items-end justify-between">
+                  <div>
+                    <p className="text-[10px] text-white/50 font-medium uppercase tracking-wide mb-0.5">Listeners</p>
+                    <div className="flex items-baseline gap-1">
+                      <p className="text-xl font-bold text-white/90">{listeners.toLocaleString()}</p>
+                    </div>
+                  </div>
 
-                {/* Live Indicator */}
-                <div className="flex items-center gap-2">
-                   <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-                   <span className="text-xs font-bold text-primary">
-                     {isLive ? '🔴 RJ LIVE' : '🟢 AutoDJ Active'}
-                   </span>
-                </div>
-                
-                {/* Visual Bar (Just for looks) */}
-                <div className="w-full bg-surface/50 rounded-full h-1 mt-3 overflow-hidden">
-                  <div className="bg-accent h-full w-[45%] rounded-full animate-pulse"></div>
+                  <div className="flex items-end gap-0.5 pb-1 opacity-40">
+                    {[...Array(4)].map((_, i) => (
+                      <div 
+                        key={i} 
+                        className="w-1 bg-[var(--accent-color)] rounded-t-sm animate-pulse" 
+                        style={{ 
+                          height: `${Math.random() * 12 + 4}px`,
+                          animationDelay: `${i * 0.15}s` 
+                        }} 
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
+
+              {/* LOGOUT BUTTON */}
+              <button 
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-red-400 hover:text-white hover:bg-red-500 hover:border-red-500 border border-transparent transition-all duration-200 font-medium text-sm group"
+              >
+                <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
+                <span>Sign Out</span>
+              </button>
+
             </div>
 
           </div>
