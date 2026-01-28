@@ -2,6 +2,7 @@ liquidsoap/music/**
 
 minio_data
 
-station_data/** 
+station_data/bytecate/
 
-data
+data/
+
