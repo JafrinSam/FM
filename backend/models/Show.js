@@ -8,9 +8,18 @@ const showSchema = new mongoose.Schema({
   isLive: { type: Boolean, default: false },
   guestName: { type: String },
   hit: { type: Boolean, default: false },
+  
   // Relations
   rjs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Rj' }], // OneToMany
-  weekly_schedules: [{ type: mongoose.Schema.Types.ObjectId, ref: 'WeeklySchedule' }]
+  weekly_schedules: [{ type: mongoose.Schema.Types.ObjectId, ref: 'WeeklySchedule' }],
+
+  // ✅ Audit Field
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    immutable: true
+  }
 }, { timestamps: true });
 
 export default mongoose.model('Show', showSchema);

@@ -1,40 +1,43 @@
 import mongoose from 'mongoose';
 
 const auditLogSchema = new mongoose.Schema({
-  // WHO
-  actor: { 
+  // WHO: The user who performed the action
+  user: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User', 
     required: true 
   },
   
-  // WHAT
+  // WHAT: The type of action
   action: { 
     type: String, 
     required: true,
-    enum: ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT'] 
+    enum: ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'REVOKE_SESSION', 'STATUS_CHANGE'] 
   },
-  
-  // WHERE (Target Resource)
-  entity: { type: String, required: true }, // e.g., 'Show', 'Schedule', 'RJ'
-  entityId: { type: mongoose.Schema.Types.ObjectId }, // The specific ID of the item
-  
-  // DETAILS (Human readable)
-  description: { type: String }, // e.g., "Updated Show Name from X to Y"
 
-  // TECHNICAL DIFF (For "Compare Versions" feature)
-  metadata: {
-    before: { type: Object }, // Snapshot of data BEFORE update
-    after: { type: Object },  // Snapshot of data AFTER update
-    ipAddress: String,
-    userAgent: String
-  }
-}, { 
-  timestamps: true // Handles WHEN
-});
+  // WHERE: Which entity was affected
+  entityType: { 
+    type: String, 
+    required: true,
+    enum: ['User', 'CollegeEvent', 'Show', 'RJ', 'WeeklySchedule'] 
+  },
+  entityId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    required: true 
+  },
+  entityName: { type: String }, // Store a snapshot of the title/name for easier reading
 
-// Enterprise Tip: Indexing for fast search
-auditLogSchema.index({ actor: 1, createdAt: -1 });
-auditLogSchema.index({ entity: 1, entityId: 1 });
+  // DETAILS: Specific changes (Old value vs New value)
+  changes: { type: Object }, // Flexible JSON object to store the diff
+  
+  // META: IP address, User Agent (optional but recommended)
+  ipAddress: String,
+  userAgent: String
+
+}, { timestamps: { createdAt: true, updatedAt: false } }); // Only need creation time
+
+// Index for fast searching by entity or user
+auditLogSchema.index({ entityId: 1, entityType: 1 });
+auditLogSchema.index({ user: 1 });
 
 export default mongoose.model('AuditLog', auditLogSchema);

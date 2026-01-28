@@ -19,7 +19,15 @@ const scheduleSchema = new mongoose.Schema({
 
   // Relations
   show: { type: mongoose.Schema.Types.ObjectId, ref: 'Show' },
-  rj: { type: mongoose.Schema.Types.ObjectId, ref: 'Rj' }
+  rj: { type: mongoose.Schema.Types.ObjectId, ref: 'Rj' },
+
+  // ✅ Audit Field
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    immutable: true
+  }
 }, { timestamps: true });
 
 // Index for faster conflict lookups

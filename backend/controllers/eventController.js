@@ -1,6 +1,8 @@
 import CollegeEvent from '../models/CollegeEvent.js';
 import MinioService from '../services/minioService.js';
 import mongoose from 'mongoose';
+import { logAudit } from '../services/auditService.js'; // ✅ Import Audit Service
+import { getChanges } from '../utils/diffHelper.js';     // ✅ Import Diff Utility
 
 // --- HELPER: Error Handler ---
 const handleError = (res, error) => {
@@ -23,7 +25,6 @@ const handleError = (res, error) => {
 export const createEvent = async (req, res) => {
   console.log(`\n[EventCtrl] 📝 CREATE Event Request`);
   console.log(`[EventCtrl] 👤 User: ${req.user?._id} (${req.user?.role})`);
-  console.log(`[EventCtrl] 📦 Body:`, JSON.stringify(req.body, null, 2));
 
   try {
     if (!req.user || !req.user._id) {
@@ -51,6 +52,16 @@ export const createEvent = async (req, res) => {
 
     console.log(`[EventCtrl] ✅ Draft Created: "${newEvent.title}" (ID: ${newEvent._id})`);
 
+    // 🛡️ Audit Log (Create)
+    logAudit({
+      req,
+      action: 'CREATE',
+      entityType: 'CollegeEvent',
+      entityId: newEvent._id,
+      entityName: newEvent.title,
+      changes: { initialData: req.body } // Log what was sent
+    });
+
     res.status(201).json({
       success: true,
       message: 'Event draft created. Please upload thumbnail next.',
@@ -67,43 +78,51 @@ export const createEvent = async (req, res) => {
 // =======================================================
 export const uploadThumbnail = async (req, res) => {
   const eventId = req.params.id;
-  console.log(`\n[EventCtrl] 🖼️ UPLOAD Thumbnail Request`);
-  console.log(`[EventCtrl] 🆔 Event ID: ${eventId}`);
-  console.log(`[EventCtrl] 📨 Content-Type: ${req.headers['content-type']}`);
+  console.log(`\n[EventCtrl] 🖼️ UPLOAD Thumbnail Request: ${eventId}`);
   
   try {
     if (!req.file) {
-        console.warn("[EventCtrl] ⚠️ No file provided in request. Check 'thumbnail' key in FormData.");
         return res.status(400).json({ success: false, message: 'No image file provided' });
     }
     
-    console.log(`[EventCtrl] 📁 File Received: ${req.file.originalname} (${req.file.size} bytes)`);
-
     const event = await CollegeEvent.findById(eventId);
     if (!event) {
-        console.warn(`[EventCtrl] ❌ Event not found: ${eventId}`);
         return res.status(404).json({ success: false, message: 'Event not found' });
     }
+
+    // Capture old value for Audit Diff
+    const oldThumbnail = event.thumbnail;
 
     // Upload
     console.log("[EventCtrl] ☁️ Uploading to MinIO...");
     const fileUrl = await MinioService.uploadBuffer(req.file, 'events');
-    console.log(`[EventCtrl] ✅ MinIO Upload Success: ${fileUrl}`);
-
+    
     // Cleanup old image
-    if (event.thumbnail && !event.thumbnail.includes('default-event.jpg')) {
-      console.log(`[EventCtrl] 🗑️ Deleting old thumbnail: ${event.thumbnail}`);
-      await MinioService.deleteFile(event.thumbnail);
+    if (oldThumbnail && !oldThumbnail.includes('default-event.jpg')) {
+      await MinioService.deleteFile(oldThumbnail).catch(e => console.warn("Cleanup failed", e));
     }
 
-    // Update
+    // Update DB
     event.thumbnail = fileUrl;
     if (event.creationStatus === 'pending') {
         event.creationStatus = 'completed'; 
-        console.log(`[EventCtrl] 🚀 Status updated to 'completed'`);
     }
     event.updatedBy = req.user._id;
     await event.save();
+
+    console.log(`[EventCtrl] ✅ Thumbnail Updated`);
+
+    // 🛡️ Audit Log (Update Thumbnail)
+    logAudit({
+      req,
+      action: 'UPDATE',
+      entityType: 'CollegeEvent',
+      entityId: event._id,
+      entityName: event.title,
+      changes: {
+        thumbnail: { old: oldThumbnail, new: fileUrl }
+      }
+    });
 
     res.status(200).json({
       success: true,
@@ -120,42 +139,29 @@ export const uploadThumbnail = async (req, res) => {
 // GET ALL
 // =======================================================
 export const getAllEvents = async (req, res) => {
-  console.log(`\n[EventCtrl] 🔍 GET ALL Events`);
-  console.log(`[EventCtrl] ❓ Query Params:`, req.query);
-
   try {
     const { category, search, page = 1, limit = 10, sort = 'asc' } = req.query;
     const query = {};
 
-    if (category && category !== 'All') {
-        query.category = category;
-    }
+    if (category && category !== 'All') query.category = category;
     
     if (search) {
       const regex = new RegExp(search, 'i');
       query.$or = [{ title: regex }, { description: regex }];
     }
     
-    // Auth Check
+    // Guest User Filter
     if (!req.user) { 
-       console.log(`[EventCtrl] 🔒 Guest User. Filtering for 'completed' events only.`);
        query.creationStatus = 'completed'; 
-    } else {
-       console.log(`[EventCtrl] 🔓 Authenticated User (${req.user.role}). Showing all events.`);
     }
 
-    console.log(`[EventCtrl] 🛠️ DB Query:`, JSON.stringify(query));
-
     const sortOrder = sort === 'desc' ? -1 : 1;
-
     const events = await CollegeEvent.find(query)
       .sort({ date: sortOrder }) 
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
       
     const total = await CollegeEvent.countDocuments(query);
-
-    console.log(`[EventCtrl] ✅ Found ${events.length} events (Total matches: ${total})`);
 
     res.status(200).json({
       success: true,
@@ -175,7 +181,6 @@ export const getAllEvents = async (req, res) => {
 // =======================================================
 export const getEvent = async (req, res) => {
   const identifier = req.params.slug;
-  console.log(`\n[EventCtrl] 🔎 GET SINGLE Event: ${identifier}`);
   
   try {
     let query = mongoose.Types.ObjectId.isValid(identifier) 
@@ -187,11 +192,9 @@ export const getEvent = async (req, res) => {
       .populate('updatedBy', 'name');
 
     if (!event) {
-        console.warn(`[EventCtrl] ❌ Event not found: ${identifier}`);
         return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
-    console.log(`[EventCtrl] ✅ Event found: "${event.title}"`);
     res.status(200).json({ success: true, data: event });
   } catch (error) {
     handleError(res, error);
@@ -204,12 +207,10 @@ export const getEvent = async (req, res) => {
 export const updateEvent = async (req, res) => {
   const eventId = req.params.id;
   console.log(`\n[EventCtrl] ✏️ UPDATE Event ID: ${eventId}`);
-  console.log(`[EventCtrl] 📦 Update Data:`, req.body);
 
   try {
     const event = await CollegeEvent.findById(eventId);
     if (!event) {
-        console.warn(`[EventCtrl] ❌ Event not found for update`);
         return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
@@ -220,16 +221,31 @@ export const updateEvent = async (req, res) => {
         'registrationLink', 'capacity', 'registrationStatus', 'isFeatured'
     ];
 
-    allowedUpdates.forEach((field) => {
-        if (req.body[field] !== undefined) {
-            event[field] = req.body[field];
-        }
+    // ✅ Get Diff (Calculate changes for Audit Log)
+    const changes = getChanges(event, req.body, allowedUpdates);
+
+    // Apply updates
+    Object.keys(changes).forEach(field => {
+        event[field] = req.body[field];
     });
 
     event.updatedBy = req.user._id;
     await event.save(); 
 
     console.log(`[EventCtrl] ✅ Event Updated Successfully`);
+
+    // 🛡️ Audit Log (Update) - Only log if there were actual changes
+    if (Object.keys(changes).length > 0) {
+        logAudit({
+            req,
+            action: 'UPDATE',
+            entityType: 'CollegeEvent',
+            entityId: event._id,
+            entityName: event.title,
+            changes
+        });
+    }
+
     res.status(200).json({ success: true, message: 'Event details updated', data: event });
   } catch (error) {
     handleError(res, error);
@@ -246,17 +262,30 @@ export const deleteEvent = async (req, res) => {
   try {
     const event = await CollegeEvent.findById(eventId);
     if (!event) {
-        console.warn(`[EventCtrl] ❌ Event not found for deletion`);
         return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
+    // ✅ Snapshot for Audit (Preserve data before deletion)
+    const snapshot = event.toObject();
+
     if (event.thumbnail && !event.thumbnail.includes('default-event.jpg')) {
-      console.log(`[EventCtrl] 🗑️ Removing thumbnail from MinIO: ${event.thumbnail}`);
-      await MinioService.deleteFile(event.thumbnail);
+      console.log(`[EventCtrl] 🗑️ Removing thumbnail from MinIO`);
+      await MinioService.deleteFile(event.thumbnail).catch(e => console.warn("Cleanup failed", e));
     }
 
     await event.deleteOne();
     console.log(`[EventCtrl] ✅ Event Deleted Successfully`);
+
+    // 🛡️ Audit Log (Delete with Snapshot)
+    logAudit({
+      req,
+      action: 'DELETE',
+      entityType: 'CollegeEvent',
+      entityId: eventId,
+      entityName: snapshot.title,
+      changes: { snapshot } // Saves the full deleted object
+    });
+
     res.status(200).json({ success: true, message: 'Event deleted successfully' });
   } catch (error) {
     handleError(res, error);
@@ -267,7 +296,6 @@ export const deleteEvent = async (req, res) => {
 // GET STATS
 // =======================================================
 export const getEventStats = async (req, res) => {
-    console.log(`\n[EventCtrl] 📊 GET STATS requested`);
     try {
         const stats = await CollegeEvent.aggregate([
             {
@@ -275,12 +303,13 @@ export const getEventStats = async (req, res) => {
                     _id: null,
                     totalEvents: { $sum: 1 },
                     pendingEvents: { $sum: { $cond: [{ $eq: ["$creationStatus", "pending"] }, 1, 0] } },
-                    completedEvents: { $sum: { $cond: [{ $eq: ["$creationStatus", "completed"] }, 1, 0] } }
+                    completedEvents: { $sum: { $cond: [{ $eq: ["$creationStatus", "completed"] }, 1, 0] } },
+                    // New: Count events where date is in the future
+                    upcomingEvents: { $sum: { $cond: [{ $gt: ["$date", new Date()] }, 1, 0] } } 
                 }
             }
         ]);
         
-        console.log(`[EventCtrl] ✅ Stats Generated:`, stats[0]);
         res.status(200).json({ success: true, data: stats[0] || {} });
     } catch (error) {
         handleError(res, error);

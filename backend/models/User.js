@@ -35,14 +35,14 @@ const userSchema = new mongoose.Schema({
     type: String, 
     default: "",
     trim: true,
-    validate: {
+/*     validate: {
       validator: function(v) {
         // Validates only if a value is provided (allows empty default)
         if (!v) return true;
         return /^(http?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/.test(v);
       },
       message: "Please provide a valid image URL"
-    }
+    } */
   },
   
   // --- 3. Roles & Permissions ---

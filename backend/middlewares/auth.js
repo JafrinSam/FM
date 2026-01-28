@@ -11,8 +11,20 @@ import {
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
+/**
+ * 🛠️ HELPER: Normalize browser names to prevent False Positives
+ * Example: "Mobile Chrome" -> "chrome", "Chrome" -> "chrome"
+ */
+const normalizeBrowser = (name) => {
+  if (!name) return 'unknown';
+  return name.toLowerCase().replace('mobile ', '').trim();
+};
+
+/**
+ * @desc    Verify Access Token (Strict Security)
+ */
 export const verifyToken = async (req, res, next) => {
-  console.log(`\n[Auth] 🔵 Verifying Request: ${req.method} ${req.originalUrl}`);
+  // console.log(`\n[Auth] 🔵 Verifying Request: ${req.method} ${req.originalUrl}`);
 
   // 1. Extract Tokens
   const authHeader = req.headers.authorization;
@@ -21,7 +33,6 @@ export const verifyToken = async (req, res, next) => {
     accessToken = authHeader.split(' ')[1];
   }
   const refreshToken = req.cookies.refreshToken;
-  const deviceId = req.headers['x-device-id'];
 
   try {
     if (!accessToken) throw new Error('NoToken');
@@ -29,16 +40,24 @@ export const verifyToken = async (req, res, next) => {
     // 2. Verify Access Token
     const decoded = jwt.verify(accessToken, ACCESS_SECRET);
 
-    // 3. Stateless Browser Check
+    // 3. 🛡️ SMART BROWSER CHECK
     const userAgentHeader = req.headers['user-agent'] || '';
-    if (decoded.browser && !userAgentHeader.includes(decoded.browser)) {
+    
+    // Only perform check if the token actually has browser info
+    if (decoded.browser) {
        const parser = new UAParser(userAgentHeader);
        const ua = parser.getResult();
+       
        const currentBrowser = ua.browser.name || 'Unknown';
-       const currentOS = ua.os.name || 'Unknown';
+       
+       // Normalize strings (strip 'Mobile', lowercase)
+       const tokenBrowserNorm = normalizeBrowser(decoded.browser);
+       const reqBrowserNorm = normalizeBrowser(currentBrowser);
 
-       if (currentBrowser !== decoded.browser || currentOS !== decoded.os) {
-          console.warn(`[Auth] 🚨 Browser Mismatch! Token: ${decoded.browser}, Req: ${currentBrowser}`);
+       // Compare Normalized Browser
+       // We ignore minor OS differences or "Mobile" prefixes here to prevent DevTools issues
+       if (tokenBrowserNorm !== reqBrowserNorm) {
+          console.warn(`[Auth] 🚨 Browser Mismatch! Token: ${decoded.browser} (${tokenBrowserNorm}), Req: ${currentBrowser} (${reqBrowserNorm})`);
           return res.status(403).json({ message: "Security Alert: Browser mismatch" });
        }
     }
@@ -58,9 +77,8 @@ export const verifyToken = async (req, res, next) => {
         return res.status(403).json({ message: "User disabled" });
     }
 
-    // ✅ FIX: Handle undefined version (Backward Compatibility)
+    // ✅ Version Check
     const dbVersion = req.user.tokenVersion || 0;
-    
     if (decoded.version !== dbVersion) {
         console.warn(`[Auth] 💥 Version Mismatch. Token: ${decoded.version}, DB: ${dbVersion}`);
         return res.status(403).json({ message: "Session revoked" });
@@ -69,16 +87,12 @@ export const verifyToken = async (req, res, next) => {
     return next();
 
   } catch (error) {
-    // ... (Auto-Refresh Logic remains the same, assuming it works) ...
-    // Just ensure you copy the Auto-Refresh logic from the previous working version here
-    // or keep the existing catch block if you haven't changed it.
-    
-    // For brevity, here is the critical fix inside the catch block if you need it:
+    // --- AUTO REFRESH LOGIC ---
     if (error.name === 'TokenExpiredError' || error.message === 'NoToken') {
        if (!refreshToken) return res.status(401).json({ message: "Session expired" });
        
        try {
-         // ... (Verification logic) ...
+         // Verify Refresh Token
          const decodedRefresh = jwt.verify(refreshToken, REFRESH_SECRET);
          const tokenDoc = await RefreshToken.findOne({ token: refreshToken });
          
@@ -90,15 +104,17 @@ export const verifyToken = async (req, res, next) => {
 
          // Fetch User
          const user = await User.findById(decodedRefresh.id).lean();
-         
-         // ✅ FIX: Handle undefined version here too
          const userVersion = user.tokenVersion || 0;
 
-         // Issue New Token
+         // Get Current Browser Info for new token
          const parser = new UAParser(req.headers['user-agent']);
          const currentUA = parser.getResult();
-         const browserInfo = { browser: currentUA.browser.name || 'Unknown', os: currentUA.os.name || 'Unknown' };
+         const browserInfo = { 
+            browser: currentUA.browser.name || 'Unknown', 
+            os: currentUA.os.name || 'Unknown' 
+         };
          
+         // Issue New Access Token
          const newAccessToken = generateAccessToken(user, userVersion, browserInfo);
          res.setHeader('x-new-access-token', newAccessToken);
          
@@ -115,7 +131,6 @@ export const verifyToken = async (req, res, next) => {
   }
 };
 
-
 /**
  * @desc    Role-Based Access Control (RBAC)
  */
@@ -126,11 +141,8 @@ export const verifyRole = (...allowedRoles) => {
       return res.status(401).json({ success: false, message: "Not authorized" });
     }
 
-    // 🚨 DEBUG: Print the role comparison
-    console.log(`[Auth] 🛡️ Role Check | User: '${req.user.role}' | Allowed: [${allowedRoles.join(', ')}]`);
-
     if (!allowedRoles.includes(req.user.role)) {
-      console.warn(`[Auth] ⛔ Access Denied. User '${req.user.email}' tried to access protected route.`);
+      console.warn(`[Auth] ⛔ Access Denied. User '${req.user.email}' (${req.user.role}) tried to access protected route.`);
       return res.status(403).json({ 
         success: false, 
         message: `Access denied: Role '${req.user.role}' is not authorized.` 
@@ -141,11 +153,11 @@ export const verifyRole = (...allowedRoles) => {
   };
 };
 
-// ... existing imports (jwt, User, RefreshToken, UAParser, utils) ...
-
+/**
+ * @desc    Optional Authentication
+ * Attaches user to req.user if valid token exists, otherwise proceeds as guest.
+ */
 export const optionalVerifyToken = async (req, res, next) => {
-  // console.log(`[Auth] ⚪ Optional Auth Check`); 
-
   const authHeader = req.headers.authorization;
   const refreshToken = req.cookies.refreshToken;
   const deviceId = req.headers['x-device-id'];
@@ -154,7 +166,7 @@ export const optionalVerifyToken = async (req, res, next) => {
   if (authHeader && authHeader.startsWith('Bearer')) {
     const accessToken = authHeader.split(' ')[1];
     try {
-      const decoded = jwt.verify(accessToken, process.env.JWT_ACCESS_SECRET);
+      const decoded = jwt.verify(accessToken, ACCESS_SECRET);
       
       // Fetch User
       const user = await User.findById(decoded.id)
@@ -171,38 +183,30 @@ export const optionalVerifyToken = async (req, res, next) => {
       }
     } catch (err) {
       // Access token invalid or expired. Fall through to Refresh logic...
-      // console.log("[Auth] Optional Access Token invalid/expired. Attempting refresh...");
     }
   }
 
-  // 2. Try Refresh Token (If Access Token failed or was missing)
+  // 2. Try Refresh Token (Silent Refresh)
   if (refreshToken) {
     try {
-      // A. Verify Signature
-      const decodedRefresh = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-      
-      // B. Check Database
+      const decodedRefresh = jwt.verify(refreshToken, REFRESH_SECRET);
       const tokenDoc = await RefreshToken.findOne({ token: refreshToken });
       
       if (tokenDoc) {
-        // C. Security Check: Device ID
-        // If the request has a device ID, it MUST match the token's device ID
+        // Device ID Security Check
         if (deviceId && tokenDoc.deviceId !== deviceId) {
             // console.warn("[Auth] Optional: Device mismatch. Treating as Guest.");
             return next(); 
         }
 
-        // D. Fetch User
         const user = await User.findById(decodedRefresh.id)
              .select('name email role isActive tokenVersion')
              .lean();
 
         if (user && user.isActive) {
-          // ✅ RESTORE IDENTITY
           req.user = user;
 
-          // E. Issue New Access Token (Silent Refresh)
-          // We capture the browser info for the new token claim
+          // Issue New Access Token (Silent Refresh)
           const parser = new UAParser(req.headers['user-agent']);
           const result = parser.getResult();
           const browserInfo = {
@@ -213,14 +217,11 @@ export const optionalVerifyToken = async (req, res, next) => {
           const userVersion = user.tokenVersion || 0;
           const newAccessToken = generateAccessToken(user, userVersion, browserInfo);
           
-          // Send new token to frontend via header
           res.setHeader('x-new-access-token', newAccessToken);
-          // console.log("[Auth] 🔄 Optional Auth: Session restored via Refresh Token");
         }
       }
     } catch (refreshErr) {
-       // Refresh failed (expired/invalid) -> Proceed as Guest
-       // console.warn("[Auth] Optional refresh failed:", refreshErr.message);
+       // Refresh failed -> Proceed as Guest
     }
   }
 

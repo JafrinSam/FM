@@ -25,7 +25,7 @@ router.get('/', optionalVerifyToken, getAllEvents);
 router.get('/:slug', getEvent);
 
 // Admin / Stats
-router.get('/admin/stats', verifyToken, verifyRole('admin', 'super_admin'), getEventStats);
+router.get('/admin/stats', verifyToken, verifyRole('admin', 'super_admin','event_manager'), getEventStats);
 
 // Create Event (Step 1: Text)
 router.post('/', verifyToken, verifyRole('admin', 'super_admin', 'event_manager'), createEvent);

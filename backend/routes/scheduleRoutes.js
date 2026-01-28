@@ -1,10 +1,34 @@
 import express from 'express';
-const router = express.Router();
 import * as scheduleController from '../controllers/scheduleController.js';
+import { verifyToken, verifyRole } from '../middlewares/auth.js';
 
-router.post('/', scheduleController.createSchedule);
+const router = express.Router();
+
+// --- PUBLIC ROUTES ---
 router.get('/', scheduleController.getAllSchedules);
-router.put('/:id', scheduleController.updateSchedule);
-router.delete('/:id', scheduleController.deleteSchedule);
+
+router.get('/public', scheduleController.getPublicSchedules);
+
+// --- PROTECTED ROUTES (Admin Only) ---
+router.post(
+  '/', 
+  verifyToken, 
+  verifyRole('admin', 'super_admin'), 
+  scheduleController.createSchedule
+);
+
+router.put(
+  '/:id', 
+  verifyToken, 
+  verifyRole('admin', 'super_admin'), 
+  scheduleController.updateSchedule
+);
+
+router.delete(
+  '/:id', 
+  verifyToken, 
+  verifyRole('admin', 'super_admin'), 
+  scheduleController.deleteSchedule
+);
 
 export default router;
