@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom'; 
 import apiClient, { setAuthToken } from '../services/apiClient';
 import { toast } from 'sonner';
 
@@ -8,9 +7,6 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  const navigate = useNavigate();
-  const location = useLocation();
 
   // --- 1. BOOTSTRAP: Check Session on App Load ---
   useEffect(() => {
@@ -19,34 +15,23 @@ export const AuthProvider = ({ children }) => {
         const storedToken = localStorage.getItem('accessToken');
         
         if (!storedToken) {
-          console.log("ℹ️ No session token found.");
           setAuthToken(null);
           setUser(null);
           setLoading(false);
-
-          if (location.pathname.startsWith('/admin')) {
-             navigate('/login', { replace: true });
-          }
-          return;
+          return; // Stop here. Navigation is handled by ProtectedRoute.
         }
 
         setAuthToken(storedToken);
         
+        // Fetch full profile on restore to get role/avatar
         const userRes = await apiClient.get('/users/me');
-        
         setUser(userRes.data.data);
-        console.log("✅ Session restored successfully");
 
       } catch (error) {
         console.log("ℹ️ Session invalid or expired");
-        
         setAuthToken(null); 
         setUser(null);
         localStorage.removeItem('accessToken'); 
-        
-        if (location.pathname.startsWith('/admin')) {
-            navigate('/login', { replace: true });
-        }
       } finally {
         setLoading(false);
       }
@@ -58,11 +43,14 @@ export const AuthProvider = ({ children }) => {
   // --- 2. LOGIN ACTION ---
   const login = async (credentials) => {
     try {
-      const { data } = await apiClient.post('/users/login', credentials);
-      const { token, ...userData } = data.data;
+      const { data: loginData } = await apiClient.post('/users/login', credentials);
+      const { token } = loginData.data;
 
       setAuthToken(token); 
-      setUser(userData);
+
+      // Fetch full profile immediately
+      const userRes = await apiClient.get('/users/me');
+      setUser(userRes.data.data);
       
       return { success: true };
 
@@ -82,14 +70,15 @@ export const AuthProvider = ({ children }) => {
       setAuthToken(null); 
       setUser(null);
       toast.info("Logged out successfully");
-      navigate('/login', { replace: true });
+      // Force reload/redirect to ensure all states are cleared
+      window.location.href = '/login'; 
     }
   };
 
   return (
     <AuthContext.Provider value={{ 
       user,
-      role: user?.role || null, // 👈 Added explicit role return
+      role: user?.role || null,
       loading, 
       isAuthenticated: !!user,
       isAdmin: user?.role === 'admin' || user?.role === 'super_admin',

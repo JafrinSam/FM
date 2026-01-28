@@ -233,7 +233,7 @@ export default function AboutView() {
                {[1,2].map((iter) => (
                    <React.Fragment key={iter}>
                        <TechItem name="React" icon={<Code size={24}/>} />
-                       <TechItem name="Strapi" icon={<Database size={24}/>} />
+                       <TechItem name="MongoDB" icon={<Database size={24}/>} />
                        <TechItem name="AzuraCast" icon={<Radio size={24}/>} />
                        <TechItem name="Docker" icon={<Server size={24}/>} />
                        <TechItem name="Tailwind" icon={<Palette size={24}/>} />

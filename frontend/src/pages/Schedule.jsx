@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Calendar, Clock, Star, AlertCircle, Radio, Mic, User, ChevronLeft, ChevronRight } from 'lucide-react';
-import { scheduleApi } from '../services/scheduleApi';
-import { getStrapiImage } from '../utils/strapi';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { Calendar, Clock, Star, AlertCircle, Radio, Mic, User, ChevronLeft, ChevronRight, Loader2, Play } from 'lucide-react';
+import useFetch from '../hooks/useFetch';
 
-// --- CONSTANTS & HELPERS (Keep these exactly as they were) ---
+// --- CONSTANTS & HELPERS ---
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const formatTime = (timeStr) => {
@@ -21,39 +20,37 @@ const checkIsOnAir = (targetDay, startTime, endTime) => {
   const currentDayIndex = now.getDay(); 
   const adjustedIndex = currentDayIndex === 0 ? 6 : currentDayIndex - 1;
   const todayName = DAYS_OF_WEEK[adjustedIndex];
+  
   if (targetDay !== todayName) return false;
+  
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const [startH, startM] = startTime.split(':').map(Number);
   const startMinutes = startH * 60 + startM;
   const [endH, endM] = endTime.split(':').map(Number);
   const endMinutes = endH * 60 + endM;
+  
   if (endMinutes < startMinutes) return currentMinutes >= startMinutes || currentMinutes < endMinutes;
   return currentMinutes >= startMinutes && currentMinutes < endMinutes;
 };
 
-const transformStrapiData = (item) => {
-    if (!item) return null;
-    const isScheduleEntry = item.show && item.startTime;
-    const show = isScheduleEntry ? item.show : item;
-    const scheduleInfo = isScheduleEntry 
-        ? { startTime: item.startTime, endTime: item.endTime, day: item.day }
-        : (show.weekly_schedules?.[0] || { startTime: "00:00", endTime: "00:00", day: "Daily" });
-    const rjsData = show.rjs || [];
-    const rjName = rjsData.length > 0 ? rjsData.map(r => r.name).join(" & ") : "ByteCast Bot";
+// Transform Data
+const transformScheduleData = (item) => {
+    const show = item.show || {}; 
+    const rj = item.rj || {}; 
 
     return {
-        id: item.documentId,
-        title: show.Title || "Music Selection",
-        subtitle: show.Tagline || "Non-stop hits",
-        description: show.Description,
-        isLiveFormat: show.IsLive,
-        isHit: show.Hit,
-        guest: show.GuestName,
-        startTime: scheduleInfo.startTime,
-        endTime: scheduleInfo.endTime,
-        day: scheduleInfo.day,
-        image: getStrapiImage(show.CoverImage),
-        rjName: rjName
+        id: item._id, 
+        title: show.title || "Music Selection",
+        subtitle: show.tagline || "Non-stop hits", 
+        description: show.description || "",
+        isLiveFormat: show.isLive || false,
+        isHit: show.isHit || false,
+        guest: show.guestName || null,
+        startTime: item.startTime, 
+        endTime: item.endTime,     
+        day: item.day,             
+        image: show.coverImage || "https://images.unsplash.com/photo-1478737270239-2f02b77ac6d5?auto=format&fit=crop&q=80", 
+        rjName: rj.name || "ByteCast Bot"
     };
 };
 
@@ -61,82 +58,48 @@ const transformStrapiData = (item) => {
 
 export default function Schedule() {
   const [activeDay, setActiveDay] = useState("Monday");
-  const [scheduleData, setScheduleData] = useState([]);
-  const [featuredItems, setFeaturedItems] = useState([]); 
-  const [loading, setLoading] = useState(true);
+  const [allSchedules, setAllSchedules] = useState([]); 
+  
+  const { get, loading } = useFetch();
 
-  // 1. NEW: Create a Cache State to store data we already fetched
-  // Structure: { "Monday": { schedule: [...], featured: [...] }, "Tuesday": ... }
-  const [dataCache, setDataCache] = useState({});
-
+  // 1. Set Active Day
   useEffect(() => {
     const todayIndex = new Date().getDay();
     const dayName = DAYS_OF_WEEK[todayIndex === 0 ? 6 : todayIndex - 1];
     setActiveDay(dayName);
   }, []);
 
+  // 2. Fetch Data
   useEffect(() => {
-    const fetchData = async () => {
-      
-      // 2. CHECK CACHE FIRST
-      // If we already have data for this day, use it and DO NOT set loading to true
-      if (dataCache[activeDay]) {
-          setScheduleData(dataCache[activeDay].schedule);
-          setFeaturedItems(dataCache[activeDay].featured);
-          setLoading(false); // Ensure loading is off
-          return; // Stop here, no need to fetch
-      }
-
-      // 3. Only show loading skeleton if we DON'T have data
-      setLoading(true);
-
-      try {
-        const [dayRes, featuredRes] = await Promise.all([
-           scheduleApi.getByDay(activeDay),
-           scheduleApi.getFeatured() 
-        ]);
-
-        const formattedSchedule = dayRes.data.map(transformStrapiData);
-        formattedSchedule.sort((a, b) => 
-            parseInt(a.startTime.replace(':','')) - parseInt(b.startTime.replace(':',''))
-        );
-        
-        // Featured Logic
-        const formattedFeatured = featuredRes.data.map(transformStrapiData);
-        const hitShows = formattedFeatured.filter(show => show.isHit);
-        
-        let calculatedFeatured = [];
-        if (hitShows.length > 0) {
-            calculatedFeatured = hitShows;
-        } else {
-            const currentLive = formattedSchedule.find(show => 
-                checkIsOnAir(show.day, show.startTime, show.endTime)
-            );
-            if (currentLive) calculatedFeatured = [currentLive];
-            else if (formattedSchedule.length > 0) calculatedFeatured = [formattedSchedule[0]];
-        }
-
-        // 4. SAVE TO CACHE
-        setDataCache(prev => ({
-            ...prev,
-            [activeDay]: {
-                schedule: formattedSchedule,
-                featured: calculatedFeatured
-            }
-        }));
-
-        setScheduleData(formattedSchedule);
-        setFeaturedItems(calculatedFeatured);
-
-      } catch (err) {
-        console.error("Schedule Error:", err);
-      } finally {
-        setLoading(false);
+    const fetchSchedules = async () => {
+      const result = await get('/weekly-schedules/public');
+      if (result.success && result.data?.data) {
+        const transformed = result.data.data.map(transformScheduleData);
+        setAllSchedules(transformed);
       }
     };
+    fetchSchedules();
+  }, [get]);
 
-    fetchData();
-  }, [activeDay]); // Dependency ensures this runs when tab changes
+  // 3. Filter Data
+  const dayScheduleData = useMemo(() => {
+    const filtered = allSchedules.filter(item => item.day === activeDay);
+    return filtered.sort((a, b) => 
+        parseInt(a.startTime.replace(':','')) - parseInt(b.startTime.replace(':',''))
+    );
+  }, [allSchedules, activeDay]);
+
+  // 4. Featured Item Logic
+  const featuredItems = useMemo(() => {
+    const currentLive = allSchedules.find(show => 
+        checkIsOnAir(show.day, show.startTime, show.endTime)
+    );
+    if (currentLive) return [currentLive];
+    const hits = dayScheduleData.filter(show => show.isHit);
+    if (hits.length > 0) return hits;
+    if (dayScheduleData.length > 0) return [dayScheduleData[0]];
+    return [];
+  }, [allSchedules, dayScheduleData]);
 
   return (
     <div className="min-h-screen bg-background text-primary pt-28 pb-20">
@@ -156,7 +119,7 @@ export default function Schedule() {
 
       {/* FEATURED SECTION */}
       <div className="max-w-5xl mx-auto px-4 mb-20 min-h-[400px]">
-         {loading ? (
+         {loading && allSchedules.length === 0 ? (
              <FeaturedSkeleton />
          ) : featuredItems.length > 1 ? (
              <FeaturedCarousel items={featuredItems} />
@@ -189,14 +152,17 @@ export default function Schedule() {
 
       {/* LIST */}
       <div className="max-w-5xl mx-auto px-4 space-y-6">
-        <h2 className="text-3xl font-serif mb-8 text-center md:text-left animate-fade-in">
-            {activeDay}'s Lineup
-        </h2>
+        <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-serif text-center md:text-left animate-fade-in">
+                {activeDay}'s Lineup
+            </h2>
+            {loading && <Loader2 className="animate-spin text-accent" />}
+        </div>
 
-        {loading ? (
+        {loading && allSchedules.length === 0 ? (
             [...Array(3)].map((_, i) => <RowSkeleton key={i} />)
-        ) : scheduleData.length > 0 ? (
-            scheduleData.map((event) => (
+        ) : dayScheduleData.length > 0 ? (
+            dayScheduleData.map((event) => (
                 <ScheduleRow key={event.id} event={event} />
             ))
         ) : (
@@ -206,13 +172,11 @@ export default function Schedule() {
             </div>
         )}
       </div>
-
     </div>
   );
 }
 
-// --- SUB-COMPONENTS (Keep Carousel, Hero, and Row EXACTLY as before) ---
-// ... (Paste the FeaturedCarousel, FeaturedHero, ScheduleRow, and Skeletons here) ...
+// --- SUB-COMPONENTS ---
 
 function FeaturedCarousel({ items }) {
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -235,101 +199,125 @@ function FeaturedCarousel({ items }) {
             <div className="transition-opacity duration-500 ease-in-out">
                 <FeaturedHero key={items[currentIndex].id} event={items[currentIndex]} />
             </div>
-            <button onClick={prevSlide} className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 hover:bg-accent text-white p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all duration-300"><ChevronLeft size={24} /></button>
-            <button onClick={nextSlide} className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 hover:bg-accent text-white p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all duration-300"><ChevronRight size={24} /></button>
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+            
+            {/* Arrows */}
+            <button onClick={prevSlide} className="absolute left-4 top-1/2 -translate-y-1/2 z-30 bg-black/40 hover:bg-accent text-white p-3 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all duration-300 transform hover:scale-110"><ChevronLeft size={24} /></button>
+            <button onClick={nextSlide} className="absolute right-4 top-1/2 -translate-y-1/2 z-30 bg-black/40 hover:bg-accent text-white p-3 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all duration-300 transform hover:scale-110"><ChevronRight size={24} /></button>
+            
+            {/* Dots */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-2">
                 {items.map((_, idx) => (
-                    <button key={idx} onClick={() => setCurrentIndex(idx)} className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === currentIndex ? 'bg-accent w-6' : 'bg-white/30 hover:bg-white'}`} />
+                    <button key={idx} onClick={() => setCurrentIndex(idx)} className={`h-2 rounded-full transition-all duration-300 shadow-lg ${idx === currentIndex ? 'bg-accent w-8' : 'bg-white/50 hover:bg-white w-2'}`} />
                 ))}
             </div>
         </div>
     );
 }
 
-// Inside Schedule.jsx
-
+// ✅ [BETTER OPTION] Cinematic Featured Hero (Text Overlay)
+// This matches the "Immersive" style of your rows for a magazine-like feel.
 function FeaturedHero({ event }) {
     const isOnAir = checkIsOnAir(event.day, event.startTime, event.endTime);
     
-    // --- SMART LABEL LOGIC ---
     let labelIcon = <Star size={12} fill="currentColor" />;
-    let labelText = "Featured Show"; // Default
+    let labelText = "Featured Show"; 
 
-    if (event.isHit) {
-        labelText = "Trending Hit";
-        labelIcon = <Star size={12} fill="currentColor" />;
-    } else if (isOnAir) {
-        labelText = "On Air Now";
-        labelIcon = <Radio size={12} className="animate-pulse" />;
-    } else {
-        labelText = "Up Next";
-        labelIcon = <Clock size={12} />;
-    }
-    // -------------------------
+    if (event.isHit) { labelText = "Trending Hit"; } 
+    else if (isOnAir) { labelText = "On Air Now"; labelIcon = <Radio size={12} className="animate-pulse" />; } 
+    else { labelText = "Up Next"; labelIcon = <Clock size={12} />; }
 
     return (
-        <div className="relative overflow-hidden rounded-[2rem] bg-surface border border-white/5 shadow-2xl animate-fade-in-up group">
-            <div className="flex flex-col md:flex-row h-full items-stretch">
-                <div className="p-8 md:p-12 flex-1 flex flex-col justify-center relative z-10">
+        <div className="relative h-[500px] w-full overflow-hidden rounded-[2.5rem] shadow-2xl group border border-white/10">
+            
+            {/* BACKGROUND IMAGE (Zoom Effect) */}
+            <img 
+                src={event.image} 
+                alt={event.title} 
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-[20s] ease-linear group-hover:scale-110"
+                loading="lazy"
+            />
+            
+            {/* CINEMATIC GRADIENT OVERLAY */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent z-10" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-transparent to-transparent z-10" />
+
+            {/* CONTENT */}
+            <div className="absolute bottom-0 left-0 w-full p-8 md:p-14 z-20 flex flex-col justify-end h-full items-start">
+                <div className="max-w-4xl space-y-6">
                     
-                    {/* DYNAMIC LABEL */}
-                    <div className="flex items-center gap-3 mb-3 flex-wrap">
-                        <span className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 
-                            ${event.isHit ? 'text-accent' : 'text-secondary'}`}>
+                    {/* LABELS */}
+                    <div className="flex flex-wrap items-center gap-3 animate-fade-in-up">
+                        <span className={`px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 backdrop-blur-md border ${event.isHit ? 'bg-accent text-white border-accent' : 'bg-white/10 text-white border-white/20'}`}>
                             {labelIcon} {labelText}
                         </span>
-
-                        {/* Secondary Badges */}
-                        {isOnAir && <span className="flex items-center gap-1.5 bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] px-2 py-0.5 rounded-full font-bold"><Radio size={10} className="animate-pulse" /> LIVE</span>}
-                        {event.isLiveFormat && <span className="flex items-center gap-1 bg-blue-600 text-white text-[10px] px-2.5 py-1 rounded shadow-lg shadow-blue-500/20 font-bold tracking-wide"><Mic size={10} fill="currentColor" /> STUDIO LIVE</span>}
+                        {event.isLiveFormat && <span className="flex items-center gap-1.5 bg-blue-600/90 text-white border border-blue-400/30 text-[11px] px-3 py-1.5 rounded-full font-bold backdrop-blur-md"><Mic size={11} fill="currentColor" /> STUDIO LIVE</span>}
                     </div>
 
-                    <h2 className="text-4xl md:text-5xl font-serif leading-tight mb-2">{event.title}</h2>
-                    <p className="text-secondary text-sm md:text-base mb-6 line-clamp-2 max-w-md">{event.subtitle}</p>
+                    {/* TEXT */}
+                    <div>
+                        <h2 className="text-5xl md:text-7xl font-serif text-white mb-3 leading-[0.95] drop-shadow-xl">{event.title}</h2>
+                        <p className="text-white/80 text-lg md:text-2xl line-clamp-2 font-light max-w-2xl drop-shadow-md">{event.subtitle}</p>
+                    </div>
                     
-                    {/* ... rest of the component (Time, Button, Image) remains the same ... */}
-                    <div className="flex flex-wrap items-center gap-3 mb-8 text-xs font-bold uppercase tracking-wider text-secondary">
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 border border-white/10"><Calendar size={14} /> {event.day}</div>
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 border border-white/10"><Clock size={14} /> {formatTime(event.startTime)}</div>
+                    {/* ACTION BUTTONS */}
+                    <div className="flex flex-wrap items-center gap-4 pt-2">
+                        <button className="bg-white text-black px-8 py-4 rounded-full font-bold hover:bg-accent hover:text-white transition-all transform hover:scale-105 flex items-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_30px_rgba(var(--accent-rgb),0.5)]">
+                            {isOnAir ? <><Play size={20} fill="currentColor" /> Listen Live</> : <><Clock size={20} /> Set Reminder</>}
+                        </button>
+                        <div className="px-6 py-4 rounded-full bg-black/40 border border-white/10 backdrop-blur-md text-white font-mono text-sm flex items-center gap-3">
+                            <span className="opacity-70">{event.day}</span>
+                            <span className="w-1 h-1 bg-white/50 rounded-full"></span>
+                            <span className="text-accent font-bold">{formatTime(event.startTime)}</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-4"><button className="bg-accent text-white px-8 py-3 rounded-lg font-bold hover:bg-accent/90 transition-colors shadow-lg shadow-accent/20">{isOnAir ? 'Listen Now' : 'Set Reminder'}</button></div>
-                </div>
-                <div className="w-full md:w-1/2 relative min-h-[320px] md:min-h-0 overflow-hidden">
-                     <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-surface via-surface/80 md:via-surface/50 to-transparent z-10 pointer-events-none" />
-                     <img src={event.image || "https://images.unsplash.com/photo-1516280440614-6697288d5d38"} alt={event.title} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                 </div>
             </div>
         </div>
     );
 }
 
+// ✅ Immersive Schedule Row (From your previous good update)
 function ScheduleRow({ event }) {
     const isOnAir = checkIsOnAir(event.day, event.startTime, event.endTime);
+    
     return (
-        <div className={`group flex flex-col md:flex-row items-stretch transition-all duration-300 rounded-2xl overflow-hidden border shadow-md hover:-translate-y-1 ${isOnAir ? 'bg-surface border-accent/50 shadow-accent/10 relative z-10' : 'bg-surface border-white/5 hover:bg-surface/80'}`}>
-            <div className={`w-full md:w-32 flex flex-row md:flex-col items-center justify-between md:justify-center p-4 md:p-0 border-b md:border-b-0 md:border-r gap-1 shrink-0 ${isOnAir ? 'bg-accent/5 border-accent/20' : 'bg-white/5 border-white/5'}`}>
-                <div className="text-center">
-                    <span className={`block text-xl font-black ${isOnAir ? 'text-accent' : 'text-primary'}`}>{formatTime(event.startTime).replace(/ AM| PM/g, '')}</span>
-                    <span className={`block text-[10px] font-bold uppercase tracking-widest ${isOnAir ? 'text-accent' : 'text-secondary/60'}`}>{formatTime(event.startTime).slice(-2)}</span>
-                </div>
-                {isOnAir && <span className="md:hidden text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">ON AIR</span>}
-                <div className={`h-8 w-[1px] hidden md:block my-1 ${isOnAir ? 'bg-accent/30' : 'bg-white/10'}`}></div>
-                <span className={`text-xs font-mono ${isOnAir ? 'text-accent/70' : 'text-secondary/50'}`}>{formatTime(event.endTime)}</span>
+        <div className={`group relative flex items-center overflow-hidden rounded-2xl border transition-all duration-300 hover:-translate-y-1 min-h-[140px] ${isOnAir ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10 hover:border-white/30'}`}>
+            
+            {/* BACKGROUND IMAGE */}
+            <div className="absolute inset-0 z-0">
+                <img 
+                    src={event.image} 
+                    alt={event.title} 
+                    className={`h-full w-full object-cover transition-transform duration-700 group-hover:scale-105 ${isOnAir ? 'scale-105 grayscale-0' : 'grayscale-[0.5]'}`} 
+                    loading="lazy"
+                />
+                {/* Heavy Gradient Overlay for text readability */}
+                <div className={`absolute inset-0 bg-gradient-to-r ${isOnAir ? 'from-black/95 via-black/80 to-transparent' : 'from-black/90 via-black/70 to-black/30'}`} />
             </div>
-            <div className="flex-1 p-6 flex flex-col justify-center min-w-0">
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    {isOnAir && <span className="flex items-center gap-1.5 bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] px-2 py-0.5 rounded-full font-bold mr-1"><Radio size={10} className="animate-pulse" />ON AIR NOW</span>}
-                    <span className="text-xs font-bold uppercase tracking-widest text-secondary/60 truncate mr-2">{event.rjName}</span>
-                    {event.isLiveFormat && <span className="flex items-center gap-1 bg-blue-600 text-white text-[10px] px-2.5 py-1 rounded shadow-lg shadow-blue-500/20 font-bold tracking-wide"><Mic size={10} fill="currentColor" /> STUDIO LIVE</span>}
-                    {event.guest && <span className="flex items-center gap-1 bg-purple-600 text-white text-[10px] px-2.5 py-1 rounded shadow-lg shadow-purple-500/20 font-bold tracking-wide"><User size={10} fill="currentColor" /> FEAT. {event.guest.toUpperCase()}</span>}
+
+            {/* CONTENT */}
+            <div className="relative z-10 flex w-full items-center p-6 gap-6">
+                
+                {/* TIME BADGE */}
+                <div className={`flex flex-col items-center justify-center rounded-xl p-3 backdrop-blur-md border min-w-[90px] shrink-0 ${isOnAir ? 'bg-accent text-white border-accent' : 'bg-black/40 text-white/80 border-white/10'}`}>
+                    <span className="text-xl font-bold">{formatTime(event.startTime).split(' ')[0]}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider">{formatTime(event.startTime).split(' ')[1]}</span>
                 </div>
-                <h3 className={`text-2xl font-serif mb-1 transition-colors truncate ${isOnAir ? 'text-accent' : 'text-primary group-hover:text-accent'}`}>{event.title}</h3>
-                <p className="text-sm text-secondary line-clamp-1">{event.subtitle}</p>
-                {isOnAir && <div className="w-full max-w-sm h-0.5 bg-accent/20 rounded-full mt-4 overflow-hidden"><div className="h-full bg-accent animate-pulse w-full origin-left scale-x-75"></div></div>}
-            </div>
-            <div className="hidden md:flex w-48 relative shrink-0 overflow-hidden">
-                <img src={event.image} alt={event.title} className={`absolute inset-0 w-full h-full object-cover transition-all duration-500 ${isOnAir ? 'opacity-100 scale-100' : 'opacity-70 grayscale-[0.3] group-hover:opacity-100 group-hover:grayscale-0 group-hover:scale-105'}`} />
-                <div className={`absolute inset-0 transition-colors duration-300 ${isOnAir ? 'bg-accent/10 mix-blend-overlay' : 'bg-black/30 group-hover:bg-transparent'}`} />
+
+                {/* INFO */}
+                <div className="flex-1 min-w-0">
+                     <div className="flex items-center gap-2 mb-2">
+                        {isOnAir && <span className="flex items-center gap-1.5 bg-red-600 text-white text-[10px] px-2 py-0.5 rounded shadow-lg font-bold animate-pulse"><Radio size={10} /> LIVE</span>}
+                        <span className="text-xs font-bold uppercase tracking-widest text-accent/90 truncate">{event.rjName}</span>
+                    </div>
+                    <h3 className="text-2xl font-serif text-white truncate drop-shadow-md group-hover:text-accent transition-colors">{event.title}</h3>
+                    <p className="text-white/60 text-sm line-clamp-1">{event.subtitle}</p>
+                </div>
+
+                {/* ACTION ICON */}
+                <div className="hidden md:flex h-12 w-12 items-center justify-center rounded-full bg-white/5 text-white backdrop-blur-md border border-white/10 group-hover:bg-accent group-hover:border-accent transition-colors shrink-0">
+                    {isOnAir ? <Play size={20} className="ml-1" fill="currentColor" /> : <Clock size={20} />}
+                </div>
             </div>
         </div>
     );
@@ -337,15 +325,12 @@ function ScheduleRow({ event }) {
 
 function FeaturedSkeleton() {
     return (
-        <div className="relative overflow-hidden rounded-[2rem] bg-surface/50 border border-white/5 h-[400px] animate-pulse">
-            <div className="flex flex-col md:flex-row h-full">
-                <div className="p-12 flex-1 space-y-4">
-                    <div className="h-4 w-24 bg-white/10 rounded"></div>
-                    <div className="h-12 w-3/4 bg-white/10 rounded"></div>
-                    <div className="h-4 w-1/2 bg-white/10 rounded"></div>
-                    <div className="flex gap-4 pt-4"><div className="h-10 w-32 bg-white/10 rounded"></div></div>
-                </div>
-                <div className="w-1/2 bg-white/5"></div>
+        <div className="relative overflow-hidden rounded-[2.5rem] bg-white/5 border border-white/5 h-[500px] animate-pulse">
+            <div className="absolute bottom-0 left-0 p-12 w-full space-y-4">
+                <div className="h-6 w-32 bg-white/10 rounded-full"></div>
+                <div className="h-16 w-3/4 bg-white/10 rounded"></div>
+                <div className="h-4 w-1/2 bg-white/10 rounded"></div>
+                <div className="flex gap-4 pt-4"><div className="h-12 w-40 bg-white/10 rounded-full"></div></div>
             </div>
         </div>
     );
@@ -353,14 +338,13 @@ function FeaturedSkeleton() {
 
 function RowSkeleton() {
     return (
-        <div className="h-32 bg-surface/50 rounded-2xl border border-white/5 flex animate-pulse">
-             <div className="w-32 border-r border-white/5 bg-white/5"></div>
-             <div className="flex-1 p-6 space-y-3">
-                 <div className="h-3 w-20 bg-white/10 rounded"></div>
-                 <div className="h-6 w-48 bg-white/10 rounded"></div>
-                 <div className="h-3 w-32 bg-white/10 rounded"></div>
+        <div className="h-36 bg-white/5 rounded-2xl border border-white/5 flex items-center p-6 animate-pulse">
+             <div className="h-20 w-20 bg-white/10 rounded-xl mr-6"></div>
+             <div className="flex-1 space-y-3">
+                 <div className="h-4 w-24 bg-white/10 rounded"></div>
+                 <div className="h-8 w-64 bg-white/10 rounded"></div>
+                 <div className="h-4 w-40 bg-white/10 rounded"></div>
              </div>
-             <div className="w-48 bg-white/5 hidden md:block"></div>
         </div>
     );
 }

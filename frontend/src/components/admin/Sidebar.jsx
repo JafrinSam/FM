@@ -5,39 +5,84 @@ import { useStationStats } from '../../hooks/useStationStats';
 import { useAuth } from '../../context/AuthContext';
 import GlassSurface from '../utils/GlassSurface';
 import { 
-  LayoutDashboard, CalendarClock, Music, Mic2, Users, 
+  LayoutDashboard, CalendarClock, Mic2, Users, 
   Settings, LogOut, Radio, BarChart3, ChevronRight, 
-  CalendarDays // 1. Added Icon for Events
+  CalendarDays 
 } from 'lucide-react';
 
 export default function Sidebar({ isOpen, closeSidebar }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { themeName } = useTheme();
+  
+  // 1. Get User Role
+  const { user, logout } = useAuth();
+  const userRole = user?.role; 
+
   const { listeners, isLive } = useStationStats();
-  const { logout } = useAuth();
   const isDark = themeName === 'dark';
 
-  const navGroups = [
+  // 2. Define Menu Structure with Permissions
+  const navStructure = [
     {
       label: 'Broadcast',
       items: [
-        { path: '/admin', icon: LayoutDashboard, label: 'Studio' },
-        { path: '/admin/show', icon: CalendarClock, label: 'Schedule' },
-        { path: '/admin/rjs', icon: Mic2, label: 'RJs & Shows' },
+        { 
+            path: '/admin', 
+            icon: LayoutDashboard, 
+            label: 'Studio', 
+            allowed: ['admin', 'super_admin', 'event_manager'] 
+        },
+        { 
+            path: '/admin/show', 
+            icon: CalendarClock, 
+            label: 'Schedule', 
+            allowed: ['admin', 'super_admin'] 
+        },
+        { 
+            path: '/admin/rjs', 
+            icon: Mic2, 
+            label: 'RJs & Shows', 
+            allowed: ['admin', 'super_admin'] 
+        },
       ]
     },
     {
       label: 'Management',
       items: [
-        // 2. Added Events Module Here
-        { path: '/admin/events', icon: CalendarDays, label: 'Events' },
-        { path: '/admin/users', icon: Users, label: 'Team' },
-        { path: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
-        { path: '/admin/settings', icon: Settings, label: 'Settings' },
+        { 
+            path: '/admin/events', 
+            icon: CalendarDays, 
+            label: 'Events', 
+            allowed: ['admin', 'super_admin', 'event_manager'] 
+        },
+        { 
+            path: '/admin/users', 
+            icon: Users, 
+            label: 'Team', 
+            allowed: ['admin', 'super_admin'] 
+        },
+        { 
+            path: '/admin/analytics', 
+            icon: BarChart3, 
+            label: 'Analytics', 
+            allowed: ['admin', 'super_admin'] 
+        },
+        { 
+            path: '/admin/settings', 
+            icon: Settings, 
+            label: 'Settings', 
+            allowed: ['admin', 'super_admin', 'event_manager'] 
+        },
       ]
     }
   ];
+
+  // 3. Filter Navigation based on Role
+  const filteredNavGroups = navStructure.map(group => ({
+    ...group,
+    items: group.items.filter(item => item.allowed.includes(userRole))
+  })).filter(group => group.items.length > 0); // Hide empty sections
 
   const handleLogout = async () => {
     await logout();
@@ -76,7 +121,7 @@ export default function Sidebar({ isOpen, closeSidebar }) {
             
             {/* SECTION 1: SCROLLABLE NAVIGATION */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar py-6 px-3 space-y-6">
-              {navGroups.map((group, idx) => (
+              {filteredNavGroups.map((group, idx) => (
                 <div key={idx}>
                   <h3 className="px-4 text-[10px] font-bold text-secondary/50 uppercase tracking-widest mb-2">
                     {group.label}

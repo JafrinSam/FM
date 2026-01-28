@@ -5,14 +5,15 @@ import { Toaster } from 'sonner';
 import { ThemeProvider } from './context/ThemeContext';
 import { PlayerProvider } from './context/PlayerContext';
 import { AuthProvider } from './context/AuthContext';
-import AxiosInterceptor from './components/AxiosInterceptor'; // ✅ Import remains same
+import AxiosInterceptor from './components/AxiosInterceptor';
+import ProtectedRoute from './components/auth/ProtectedRoute'; // ✅ Import this
 
 import AdminLayout from './layout/AdminLayout'; 
 import ClientLayout from './layout/ClientLayout';
 import LoadingScreen from './pages/LoadingScreen';
 
 // Views
-import DashboardHome from './pages/admin/DashboardHome';
+import Dashboard from './pages/admin/dashboard/Dashboard';
 import RjManager from './pages/admin/RjManager';
 import ShowManager from './pages/admin/ShowManager';
 import UserManagement from './pages/admin/UserManagement';
@@ -26,8 +27,6 @@ import EventsView from './pages/EventsView';
 import LoginPage from './pages/auth/LoginPage';
 import EventManagement from './pages/admin/EventManagement';
 import Settings from './pages/admin/Settings';
-
-
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -48,12 +47,11 @@ function App() {
             {isLoading && <LoadingScreen />}
             <Toaster position="bottom-right" theme="dark" /> 
 
-            {/* ✅ FIX: Wrap the Routes with the Interceptor, do NOT put it inside Routes */}
             <AxiosInterceptor>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 
-                {/* PUBLIC ROUTES */}
+                {/* PUBLIC ROUTES (Accessible to everyone) */}
                 <Route path="/" element={<ClientLayout />}>
                   <Route index element={<Home/>} /> 
                   <Route path="live" element={<Live/>} />
@@ -63,15 +61,28 @@ function App() {
                   <Route path="*" element={<NotFound />} />
                 </Route>
                 
-                {/* ADMIN ROUTES */}
-                <Route path="/admin" element={<AdminLayout />}>
-                    <Route index element={<DashboardHome />} />
-                    <Route path="rjs" element={<RjManager />} />
-                    <Route path="show" element={<ShowManager />} /> 
-                    <Route path="users" element ={<UserManagement/>} />
-                    <Route path="events" element={<EventManagement />} />
-                    <Route path='settings' element={<Settings />} />
-                    <Route path="*" element={<NotFound />} />
+                {/* 🔒 ADMIN ROUTES (Protected) */}
+                {/* 🔒 LEVEL 1 SECURITY: Allow anyone with at least "Event Manager" status to enter the Admin Panel */}
+                <Route element={<ProtectedRoute allowedRoles={['admin', 'super_admin', 'event_manager']} />}>
+                    <Route path="/admin" element={<AdminLayout />}>
+                        
+                        {/* === SHARED ROUTES === */}
+                        {/* Everyone who passed Level 1 can see these */}
+                        <Route index element={<Dashboard />} />
+                        <Route path="events" element={<EventManagement />} />
+                        <Route path="settings" element={<Settings />} />
+
+                        {/* === RESTRICTED ROUTES === */}
+                        {/* Only Admin & Super Admin can enter here. Event Managers are blocked. */}
+                        <Route element={<ProtectedRoute allowedRoles={['admin', 'super_admin']} />}>
+                            <Route path="rjs" element={<RjManager />} />
+                            <Route path="show" element={<ShowManager />} /> 
+                            <Route path="users" element={<UserManagement />} />
+                            
+                        </Route>
+
+                        <Route path="*" element={<NotFound />} />
+                    </Route>
                 </Route>
               
                 <Route path="*" element={<NotFound />} />
