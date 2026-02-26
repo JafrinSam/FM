@@ -8,6 +8,11 @@ const upload = createUploader();
 
 // --- PUBLIC ROUTES ---
 router.get('/', showController.getAllShows);
+
+// ✅ NEW: Specific route for featured shows
+// MUST be defined BEFORE router.get('/:id')
+router.get('/featured', showController.getFeaturedShows);
+
 router.get('/:id', showController.getShowById);
 
 // --- PROTECTED ROUTES (Admin Only) ---

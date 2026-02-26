@@ -251,3 +251,34 @@ export const deleteShow = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error", error: err.message });
   }
 };
+
+/**
+ * GET FEATURED SHOWS (Hits)
+ * Filters shows where hit === true
+ */
+export const getFeaturedShows = async (req, res) => {
+  console.log(`\n[INFO] [ShowCtrl] Get Featured Shows`);
+  try {
+    const featuredShows = await Show.find({ hit: true })
+      .populate('rjs', 'name photo') 
+      .populate({
+        path: 'weekly_schedules',
+        select: 'day startTime endTime', // Get timing for the card
+        options: { sort: { day: 1, startTime: 1 } } // Sort schedules
+      })
+      .sort({ updatedAt: -1 }) // Newest hits first
+      .limit(6); // Limit to 6 to prevent layout overflow
+
+    console.log(`[INFO] [ShowCtrl] Found ${featuredShows.length} featured shows`);
+    
+    res.status(200).json({ 
+      success: true, 
+      count: featuredShows.length, 
+      data: featuredShows 
+    });
+
+  } catch (err) {
+    console.error(`[ERROR] [ShowCtrl] GetFeatured Error: ${err.message}`);
+    res.status(500).json({ success: false, message: "Server Error", error: err.message });
+  }
+};

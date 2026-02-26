@@ -46,6 +46,19 @@
   /* Animations */
   --animate-spin-slow: spin 8s linear infinite;
   --animate-music-bar: music-bar 0.5s ease-in-out infinite alternate;
+
+  /* 1. Register the animation utility class */
+  --animate-music-bar: music-bar 1s ease-in-out infinite;
+
+  /* 2. Define the keyframes */
+  @keyframes music-bar {
+    0%, 100% {
+      height: 20%;
+    }
+    50% {
+      height: 100%;
+    }
+  }
 }
 
 /* 6. Keyframes & Utilities */

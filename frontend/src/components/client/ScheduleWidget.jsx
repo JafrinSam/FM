@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, Radio, Mic, Star } from 'lucide-react';
-import { scheduleApi } from '../../services/scheduleApi'; // Make sure path is correct
-import { getStrapiImage } from '../../utils/strapi'; // Make sure path is correct
+import React, { useEffect, useState, useMemo } from 'react';
+import { Calendar, Clock, Radio, Mic, Loader2 } from 'lucide-react';
+import useFetch from '../../hooks/useFetch'; 
 
 // --- CONSTANTS & HELPERS ---
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -15,115 +14,121 @@ const formatTime = (timeStr) => {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 
-// Returns minutes from midnight for easier comparison
+// Helper: Convert "14:30" -> 870 minutes for easy comparison
 const getMinutes = (timeStr) => {
+    if (!timeStr) return 0;
     const [h, m] = timeStr.split(':').map(Number);
     return h * 60 + m;
 };
 
-const checkIsOnAir = (targetDay, startTime, endTime) => {
-  if (!startTime || !endTime || !targetDay) return false;
+// Check if a show is currently happening
+const checkIsOnAir = (startTime, endTime) => {
   const now = new Date();
-  const currentDayIndex = now.getDay(); 
-  const adjustedIndex = currentDayIndex === 0 ? 6 : currentDayIndex - 1;
-  const todayName = DAYS_OF_WEEK[adjustedIndex];
-  
-  if (targetDay !== todayName) return false;
-
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const startMinutes = getMinutes(startTime);
   const endMinutes = getMinutes(endTime);
 
-  if (endMinutes < startMinutes) { // Overnight show
+  // Handle overnight shows (e.g., 23:00 to 01:00)
+  if (endMinutes < startMinutes) { 
       return currentMinutes >= startMinutes || currentMinutes < endMinutes;
   }
   return currentMinutes >= startMinutes && currentMinutes < endMinutes;
 };
 
-const transformStrapiData = (item) => {
-    if (!item) return null;
-    const isScheduleEntry = item.show && item.startTime;
-    const show = isScheduleEntry ? item.show : item;
-    const scheduleInfo = isScheduleEntry 
-        ? { startTime: item.startTime, endTime: item.endTime, day: item.day }
-        : (show.weekly_schedules?.[0] || { startTime: "00:00", endTime: "00:00", day: "Daily" });
-    const rjsData = show.rjs || [];
-    const rjName = rjsData.length > 0 ? rjsData.map(r => r.name).join(" & ") : "ByteCast Bot";
+// Transform Backend Data to Widget Format
+const transformScheduleData = (item) => {
+    const show = item.show || {};
+    const rj = item.rj || {};
 
     return {
-        id: item.documentId,
-        title: show.Title || "Music Selection",
-        isLiveFormat: show.IsLive,
-        guest: show.GuestName,
-        startTime: scheduleInfo.startTime,
-        endTime: scheduleInfo.endTime,
-        day: scheduleInfo.day,
-        rjName: rjName
+        id: item._id,
+        title: show.title || "Music Selection",
+        isLiveFormat: show.isLive || false,
+        guest: show.guestName,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        day: item.day,
+        rjName: rj.name || "ByteCast Bot"
     };
 };
 
 export default function ScheduleWidget() {
+  const { get, loading } = useFetch();
   const [currentShow, setCurrentShow] = useState(null);
   const [nextShows, setNextShows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   useEffect(() => {
-    const fetchSchedule = async () => {
+    const fetchAndProcessSchedule = async () => {
       try {
-        const now = new Date();
-        const currentDayIndex = now.getDay();
-        const todayName = DAYS_OF_WEEK[currentDayIndex === 0 ? 6 : currentDayIndex - 1];
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-        // Fetch Today's Schedule
-        const res = await scheduleApi.getByDay(todayName);
-        const daySchedule = res.data.map(transformStrapiData);
+        // 1. Fetch Public Schedule
+        const result = await get('/weekly-schedules/public');
         
-        // Sort by start time
-        daySchedule.sort((a, b) => getMinutes(a.startTime) - getMinutes(b.startTime));
+        if (result.success && result.data?.data) {
+            const allSchedules = result.data.data.map(transformScheduleData);
 
-        // 1. Find Current Show
-        const live = daySchedule.find(show => checkIsOnAir(show.day, show.startTime, show.endTime));
-        setCurrentShow(live || null);
+            // 2. Determine "Today"
+            const now = new Date();
+            const currentDayIndex = now.getDay(); 
+            // Convert JS Day (0=Sun) to Array Index (Mon=0...Sun=6)
+            const todayName = DAYS_OF_WEEK[currentDayIndex === 0 ? 6 : currentDayIndex - 1];
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-        // 2. Find Upcoming Shows (Start time is greater than current time)
-        // If there is a live show, we want shows starting AFTER the live show ends
-        // If no live show, we want shows starting AFTER now
-        
-        const upcoming = daySchedule.filter(show => {
-            const startM = getMinutes(show.startTime);
-            // If show started in the past, ignore it (unless it's the current one, which we handled)
-            return startM > currentMinutes;
-        }).slice(0, 3); // Limit to next 3 shows
+            // 3. Filter for Today
+            const todaySchedules = allSchedules.filter(s => s.day === todayName);
 
-        setNextShows(upcoming);
+            // 4. Sort by Start Time
+            todaySchedules.sort((a, b) => getMinutes(a.startTime) - getMinutes(b.startTime));
 
+            // 5. Find Current Show
+            const live = todaySchedules.find(show => checkIsOnAir(show.startTime, show.endTime));
+            setCurrentShow(live || null);
+
+            // 6. Find Upcoming Shows
+            const upcoming = todaySchedules.filter(show => {
+                const startM = getMinutes(show.startTime);
+                // Show must start AFTER current time
+                // AND not be the show that is currently live (redundancy check)
+                return startM > currentMinutes;
+            }).slice(0, 3); // Take next 3
+
+            setNextShows(upcoming);
+        }
       } catch (err) {
-        console.error("Schedule Widget Error:", err);
+        console.error("Widget Error:", err);
       } finally {
-        setLoading(false);
+        setIsDataLoaded(true);
       }
     };
 
-    fetchSchedule();
-  }, []);
+    fetchAndProcessSchedule();
+  }, [get]);
 
-  if (loading) return null; 
+  // Loading State
+  if (loading || !isDataLoaded) return (
+      <div className="max-w-4xl mx-auto px-4 -mt-20 relative z-20 flex justify-center">
+          <div className="bg-background border border-border shadow-2xl rounded-3xl p-8 flex items-center gap-2">
+              <Loader2 className="animate-spin text-accent" />
+              <span className="text-sm font-medium">Loading Schedule...</span>
+          </div>
+      </div>
+  );
 
-  // If day is over (no live, no upcoming), show generic message or hide
+  // Empty State (Day Over)
   if (!currentShow && nextShows.length === 0) return (
       <div className="max-w-4xl mx-auto px-4 -mt-20 relative z-20">
-        <div className="bg-background border border-border shadow-2xl rounded-3xl p-8 text-center">
+        <div className="bg-background border border-border shadow-2xl rounded-3xl p-8 text-center animate-in fade-in slide-in-from-bottom-4">
             <h3 className="text-xl font-bold text-secondary">Broadcast Day Concluded</h3>
-            <p className="text-sm text-secondary/70 mt-2">Check the schedule for tomorrow's lineup!</p>
+            <p className="text-sm text-secondary/70 mt-2">Check back tomorrow for more live shows!</p>
         </div>
       </div>
   );
 
   return (
     <div className="max-w-4xl mx-auto px-4 -mt-20 relative z-20">
-      <div className="bg-background border border-border shadow-2xl rounded-3xl p-8 md:p-10">
+      <div className="bg-background border border-border shadow-2xl rounded-3xl p-8 md:p-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
         
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-accent/10 rounded-xl text-accent">
@@ -145,7 +150,7 @@ export default function ScheduleWidget() {
           
           {/* 1. CURRENTLY PLAYING (Highlighted) */}
           {currentShow ? (
-            <div className="group p-6 rounded-2xl border bg-surface border-accent/50 shadow-lg shadow-accent/5 flex flex-col md:flex-row md:items-center justify-between relative overflow-hidden">
+            <div className="group p-6 rounded-2xl border bg-surface border-accent/50 shadow-lg shadow-accent/5 flex flex-col md:flex-row md:items-center justify-between relative overflow-hidden transition-all hover:shadow-accent/10">
                {/* Accent Bar */}
                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-accent"></div>
 
@@ -189,7 +194,7 @@ export default function ScheduleWidget() {
 
           {/* 2. UPCOMING LIST */}
           {nextShows.length > 0 && (
-             <div className="pt-2">
+             <div className="pt-4">
                  <h4 className="text-xs font-bold uppercase tracking-[0.15em] text-secondary mb-4 ml-2">Up Next</h4>
                  <div className="space-y-3">
                     {nextShows.map((show, idx) => (
@@ -205,7 +210,7 @@ export default function ScheduleWidget() {
                                     </p>
                                 </div>
                             </div>
-                            <div className="text-right font-mono text-sm text-secondary font-medium bg-background/50 px-3 py-1 rounded-md">
+                            <div className="text-right font-mono text-sm text-secondary font-medium bg-background/50 px-3 py-1 rounded-md border border-white/5">
                                 {formatTime(show.startTime)}
                             </div>
                         </div>
